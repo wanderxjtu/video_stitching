@@ -101,6 +101,8 @@ void printUsage()
         "      Blending strength from [0,100] range. The default is 5.\n"
         "  --output <result_img>\n"
         "      The default is 'result.png'.\n"
+	"\nVideo Stitching:\n"
+	"  --video <video_devs>\n";
 }
 
 
@@ -281,6 +283,10 @@ int parseCmdArgs(int argc, char** argv)
             result_name = argv[i + 1];
             i++;
         }
+        else if (string(argv[i]) == "--video"){
+	// TODO: what is video_devs?
+	    i++;
+	}
         else
             img_names.push_back(argv[i]);
     }
@@ -302,6 +308,7 @@ int main(int argc, char* argv[])
         return retval;
 
     // Check if have enough images
+    
     int num_images = static_cast<int>(img_names.size());
     if (num_images < 2)
     {

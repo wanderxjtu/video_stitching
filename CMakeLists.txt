@@ -33,7 +33,10 @@ set(stitching_libs opencv_core opencv_imgproc opencv_highgui opencv_features2d o
 FILE(GLOB stitching_files "*.hpp" "*.cpp")
 
 set(the_target opencv_stitching)    
-add_executable(${the_target} ${stitching_files})
+set(video_target video_stitching)    
+
+add_executable(${the_target} ${stitching_files} "main.cxx")
+add_executable(${video_target} ${stitching_files} "video.cxx")
 
 add_dependencies(${the_target} ${stitching_libs})
 set_target_properties(${the_target} PROPERTIES
@@ -42,11 +45,20 @@ set_target_properties(${the_target} PROPERTIES
                       RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}
                       INSTALL_NAME_DIR lib
                       OUTPUT_NAME "opencv_stitching")
+set_target_properties(${video_target} PROPERTIES
+                      DEBUG_POSTFIX "${OPENCV_DEBUG_POSTFIX}"
+                      ARCHIVE_OUTPUT_DIRECTORY ${LIBRARY_OUTPUT_PATH}
+                      RUNTIME_OUTPUT_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}
+                      INSTALL_NAME_DIR lib
+                      OUTPUT_NAME "video_stitching")
 					  
 if(ENABLE_SOLUTION_FOLDERS)
 	set_target_properties(${the_target} PROPERTIES FOLDER "applications")
+	set_target_properties(${video_target} PROPERTIES FOLDER "applications")
 endif()	
 
 target_link_libraries(${the_target} ${stitching_libs})
+target_link_libraries(${video_target} ${stitching_libs})
 
 install(TARGETS ${the_target} RUNTIME DESTINATION bin COMPONENT main)
+install(TARGETS ${video_target} RUNTIME DESTINATION bin COMPONENT main)
