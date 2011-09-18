@@ -123,6 +123,10 @@ int seam_find_type = SeamFinder::GC_COLOR;
 int blend_type = Blender::MULTI_BAND;
 float blend_strength = 5;
 string result_name = "result.png";
+// FIXME below args should be set to false and 0 when release
+// and now is set to true for Test and Debug
+bool is_video = true;
+int video_num = 2;
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -283,8 +287,10 @@ int parseCmdArgs(int argc, char** argv)
             result_name = argv[i + 1];
             i++;
         }
-        else if (string(argv[i]) == "--video"){
-	// TODO: what is video_devs?
+        else if (string(argv[i]) == "--video")
+	{
+	    is_video = true;
+	    video_num = atoi(argv[i + 1]);
 	    i++;
 	}
         else
@@ -308,12 +314,27 @@ int main(int argc, char* argv[])
         return retval;
 
     // Check if have enough images
-    
-    int num_images = static_cast<int>(img_names.size());
+    int num_images = is_video?video_num:static_cast<int>(img_names.size());
     if (num_images < 2)
     {
         LOGLN("Need more images");
         return -1;
+    }
+    
+    // Check & open video devices
+    vector<VideoCapture> video(num_images);
+    if ( is_video )
+    {
+	for (int i = 0; i < num_images; ++i){
+	  // FIXME error handler;
+// 	  try{
+	    video[i].open(i);
+// 	  }
+// 	  catch(){
+// 	    LOGLN("Video device not ready");
+// 	    return -1;
+// 	  }
+	}
     }
 
     double work_scale = 1, seam_scale = 1, compose_scale = 1;
@@ -332,7 +353,11 @@ int main(int argc, char* argv[])
 
     for (int i = 0; i < num_images; ++i)
     {
-        full_img = imread(img_names[i]);
+        if ( is_video ) {
+	    video[i]>>full_img;
+	} else {
+	    full_img = imread(img_names[i]);
+	}
         full_img_sizes[i] = full_img.size();
 
         if (full_img.empty())
