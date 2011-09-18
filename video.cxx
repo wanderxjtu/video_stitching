@@ -126,7 +126,7 @@ string result_name = "result.png";
 // FIXME below args should be set to false and 0 when release
 // and now is set to true for Test and Debug
 bool is_video = true;
-int video_num = 2;
+// int video_num = 2;
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -290,8 +290,6 @@ int parseCmdArgs(int argc, char** argv)
         else if (string(argv[i]) == "--video")
 	{
 	    is_video = true;
-	    video_num = atoi(argv[i + 1]);
-	    i++;
 	}
         else
             img_names.push_back(argv[i]);
@@ -314,29 +312,13 @@ int main(int argc, char* argv[])
         return retval;
 
     // Check if have enough images
-    int num_images = is_video?video_num:static_cast<int>(img_names.size());
+    int num_images = static_cast<int>(img_names.size());
     if (num_images < 2)
     {
         LOGLN("Need more images");
         return -1;
     }
     
-    // Check & open video devices
-    vector<VideoCapture> video(num_images);
-    if ( is_video )
-    {
-	for (int i = 0; i < num_images; ++i){
-	  // FIXME error handler;
-// 	  try{
-	    video[i].open(i);
-// 	  }
-// 	  catch(){
-// 	    LOGLN("Video device not ready");
-// 	    return -1;
-// 	  }
-	}
-    }
-
     double work_scale = 1, seam_scale = 1, compose_scale = 1;
     bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
 
@@ -351,10 +333,35 @@ int main(int argc, char* argv[])
     vector<Size> full_img_sizes(num_images);
     double seam_work_aspect = 1;
 
+    // Check & open video devices
+    vector<VideoCapture> video(num_images);
+    if ( is_video )
+    {
+	LOGLN("Vide initializing");
+	for (int i = 0; i < num_images; ++i){
+	  // FIXME error handler;
+// 	  try{
+	    video[i].open(atoi(img_names[i].c_str()));
+	    for (int j=10; j>0; --j) {
+		video[i]>>full_img;
+	    }
+// 	  }
+// 	  catch(){
+// 	    LOGLN("Video device not ready");
+// 	    return -1;
+// 	  }
+	}
+    }
+      
+
     for (int i = 0; i < num_images; ++i)
     {
         if ( is_video ) {
 	    video[i]>>full_img;
+// 	    namedWindow("test",CV_WINDOW_AUTOSIZE);
+// 	    LOGLN("show captured img");
+// 	    imshow("test",full_img);
+// 	    waitKey(120);
 	} else {
 	    full_img = imread(img_names[i]);
 	}
@@ -413,21 +420,22 @@ int main(int argc, char* argv[])
     // Leave only images we are sure are from the same panorama
     vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
     vector<Mat> img_subset;
-    vector<string> img_names_subset;
+//     vector<string> img_names_subset;
     vector<Size> full_img_sizes_subset;
     for (size_t i = 0; i < indices.size(); ++i)
     {
-        img_names_subset.push_back(img_names[indices[i]]);
+//         img_names_subset.push_back(img_names[indices[i]]);
         img_subset.push_back(images[indices[i]]);
         full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
     }
+    LOG("test point2");
 
     images = img_subset;
-    img_names = img_names_subset;
+//     img_names = img_names_subset;
     full_img_sizes = full_img_sizes_subset;
 
     // Check if we still have enough images
-    num_images = static_cast<int>(img_names.size());
+    num_images = static_cast<int>(images.size());
     if (num_images < 2)
     {
         LOGLN("Need more images");
@@ -544,7 +552,11 @@ int main(int argc, char* argv[])
         LOGLN("Compositing image #" << indices[img_idx]+1);
 
         // Read image and resize it if necessary
-        full_img = imread(img_names[img_idx]);
+	if (is_video) {
+	    video[img_idx] >> full_img;
+	} else {
+	    full_img = imread(img_names[img_idx]);
+	}
         if (!is_compose_scale_set)
         {
             if (compose_megapix > 0)
