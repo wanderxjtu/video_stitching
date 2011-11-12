@@ -117,6 +117,7 @@ int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
 int warp_type = Warper::SPHERICAL;
+// int warp_type = Warper::PLANE;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::GC_COLOR;
@@ -342,18 +343,20 @@ int main(int argc, char* argv[])
 	  // FIXME error handler;
 // 	  try{
 	    video[i].open(atoi(img_names[i].c_str()));
-	    for (int j=10; j>0; --j) {
-		video[i]>>full_img;
-	    }
 // 	  }
 // 	  catch(){
 // 	    LOGLN("Video device not ready");
 // 	    return -1;
 // 	  }
 	}
+	// Wait for about 2 sec to initializing the cameras
+	for (int j=50; j>0; --j) 
+		for (int i = 0; i < num_images; ++i)
+		    video[i]>>full_img;
     }
       
 
+//   do{
     for (int i = 0; i < num_images; ++i)
     {
         if ( is_video ) {
@@ -412,35 +415,47 @@ int main(int argc, char* argv[])
     LOG("Pairwise matching");
     t = getTickCount();
     vector<MatchesInfo> pairwise_matches;
-    BestOf2NearestMatcher matcher(try_gpu, match_conf);
+    BestOf2NearestMatcher matcher(try_gpu, match_conf, 4,2);
     matcher(features, pairwise_matches);
     matcher.releaseMemory();
     LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-
+    
+    // Test code
+    Mat out;
+    drawMatches(images[0], features[0].keypoints, images[1], features[1].keypoints, pairwise_matches[1].matches, out);
+    imwrite("matchpoints.png", out);
+    
     // Leave only images we are sure are from the same panorama
-    vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
-    vector<Mat> img_subset;
-//     vector<string> img_names_subset;
-    vector<Size> full_img_sizes_subset;
-    for (size_t i = 0; i < indices.size(); ++i)
-    {
-//         img_names_subset.push_back(img_names[indices[i]]);
-        img_subset.push_back(images[indices[i]]);
-        full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
-    }
-    LOG("test point2");
-
-    images = img_subset;
-//     img_names = img_names_subset;
-    full_img_sizes = full_img_sizes_subset;
-
-    // Check if we still have enough images
-    num_images = static_cast<int>(images.size());
-    if (num_images < 2)
-    {
-        LOGLN("Need more images");
-        return -1;
-    }
+    // Acturely we don't need to ensure the images are from the same panorama,
+    // but TODO the check must be done here simply. 
+//     vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
+    vector<int> indices;
+    for (size_t i = 0; i < num_images; ++i)
+	indices.push_back(i);
+//     vector<Mat> img_subset;
+// //     vector<string> img_names_subset;
+//     vector<Size> full_img_sizes_subset;
+//     for (size_t i = 0; i < indices.size(); ++i)
+//     {
+// //         img_names_subset.push_back(img_names[indices[i]]);
+//         img_subset.push_back(images[indices[i]]);
+//         full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
+//     }
+//     LOG("test point2");
+// 
+//     images = img_subset;
+// //     img_names = img_names_subset;
+//     full_img_sizes = full_img_sizes_subset;
+// 
+//     // Check if we still have enough images
+//     num_images = static_cast<int>(images.size());
+//     
+//     if (num_images < 2)
+//     {
+//         LOGLN("Need more images");
+// // 	if (is_video) continue;
+//         return -1;
+//     }
 
     LOGLN("Estimating rotations...");
     t = getTickCount();
@@ -547,6 +562,10 @@ int main(int argc, char* argv[])
     double compose_seam_aspect = 1;
     double compose_work_aspect = 1;
 
+    // Here we start to compositing images
+    // For video, recapture a frame and compose seems works fine
+    // So maybe loop this proc can produce a stitched video
+    for (int i = 0; i < 100; ++i){
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
         LOGLN("Compositing image #" << indices[img_idx]+1);
@@ -617,6 +636,7 @@ int main(int argc, char* argv[])
         dilate(masks_warped[img_idx], dilated_mask, Mat());
         resize(dilated_mask, seam_mask, mask_warped.size());
         mask_warped = seam_mask & mask_warped;
+	imwrite("tp_imgwarpeds.png", img_warped_s);
 
         if (blender.empty())
         {            
@@ -649,10 +669,17 @@ int main(int argc, char* argv[])
 
     LOGLN("Compositing, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
-    imwrite(result_name, result);
+    // imwrite(result_name, result);
+    // Create a window to show the result (maybe a video)
+    imwrite("matchresult.png", result);
+    namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);
+    imshow("video_stitching", result);
+    waitKey(100000);
 
     LOGLN("Finished, total time: " << ((getTickCount() - app_start_time) / getTickFrequency()) << " sec");
-    return 0;
+    //return 0;
+    }
+//   }while(is_video);
 }
 
 

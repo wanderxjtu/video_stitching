@@ -1,3 +1,4 @@
+set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS true)
 
 # Following block can broke build in case of cross-compilng

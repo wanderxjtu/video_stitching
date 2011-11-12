@@ -114,7 +114,8 @@ double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
-int warp_type = Warper::SPHERICAL;
+int warp_type = Warper::PLANE;
+// int warp_type = Warper::SPHERICAL;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::GC_COLOR;
@@ -379,28 +380,32 @@ int main(int argc, char* argv[])
     LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
     // Leave only images we are sure are from the same panorama
-    vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
-    vector<Mat> img_subset;
-    vector<string> img_names_subset;
-    vector<Size> full_img_sizes_subset;
-    for (size_t i = 0; i < indices.size(); ++i)
-    {
-        img_names_subset.push_back(img_names[indices[i]]);
-        img_subset.push_back(images[indices[i]]);
-        full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
-    }
-
-    images = img_subset;
-    img_names = img_names_subset;
-    full_img_sizes = full_img_sizes_subset;
-
-    // Check if we still have enough images
-    num_images = static_cast<int>(img_names.size());
-    if (num_images < 2)
-    {
-        LOGLN("Need more images");
-        return -1;
-    }
+    vector<int> indices;
+    for (size_t i = 0; i < num_images; ++i)
+	indices.push_back(i);
+    
+//     vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
+//     vector<Mat> img_subset;
+//     vector<string> img_names_subset;
+//     vector<Size> full_img_sizes_subset;
+//     for (size_t i = 0; i < indices.size(); ++i)
+//     {
+//         img_names_subset.push_back(img_names[indices[i]]);
+//         img_subset.push_back(images[indices[i]]);
+//         full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
+//     }
+// 
+//     images = img_subset;
+//     img_names = img_names_subset;
+//     full_img_sizes = full_img_sizes_subset;
+// 
+//     // Check if we still have enough images
+//     num_images = static_cast<int>(img_names.size());
+//     if (num_images < 2)
+//     {
+//         LOGLN("Need more images");
+//         return -1;
+//     }
 
     LOGLN("Estimating rotations...");
     t = getTickCount();

@@ -46,7 +46,7 @@ using namespace cv;
 
 void DjSets::create(int n) 
 {
-    rank_.assign(n, 0);
+    rank_.assign(n, 0); 
     size.assign(n, 1);
     parent.resize(n);
     for (int i = 0; i < n; ++i)

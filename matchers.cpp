@@ -471,8 +471,14 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
     for (size_t i = 0; i < matches_info.inliers_mask.size(); ++i)
         if (matches_info.inliers_mask[i])
             matches_info.num_inliers++;
-
+//TODO why so be confidence
+    LOG("matches_info-num_inliers:");
+    LOGLN(matches_info.num_inliers);
+    LOG("matches-size:");
+    LOGLN(matches_info.matches.size());
     matches_info.confidence = matches_info.num_inliers / (8 + 0.3*matches_info.matches.size());
+    LOG("matches confidence:")
+    LOGLN(matches_info.confidence);
 
     // Check if we should try to refine motion
     if (matches_info.num_inliers < num_matches_thresh2_)
