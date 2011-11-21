@@ -116,8 +116,8 @@ double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
-int warp_type = Warper::SPHERICAL;
-// int warp_type = Warper::PLANE;
+//int warp_type = Warper::SPHERICAL;
+int warp_type = Warper::CYLINDRICAL;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::GC_COLOR;
@@ -487,6 +487,7 @@ int main(int argc, char* argv[])
     }
     nth_element(focals.begin(), focals.begin() + focals.size()/2, focals.end());
     float warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
+    LOGLN("warp image scale:"<<warped_image_scale);
 
     if (wave_correct)
     {
@@ -523,10 +524,10 @@ int main(int argc, char* argv[])
     for (int i = 0; i < num_images; ++i)
     {
         corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
-                                  cameras[i].R, images_warped[i]);
+                                  cameras[i].R, images_warped[i], INTER_LINEAR, BORDER_CONSTANT);
         sizes[i] = images_warped[i].size();
         warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
-                     cameras[i].R, masks_warped[i], INTER_NEAREST, BORDER_CONSTANT);
+                     cameras[i].R, masks_warped[i], INTER_LINEAR, BORDER_CONSTANT);
     }
 
     vector<Mat> images_warped_f(num_images);
@@ -565,6 +566,7 @@ int main(int argc, char* argv[])
     // Here we start to compositing images
     // For video, recapture a frame and compose seems works fine
     // So maybe loop this proc can produce a stitched video
+    stringstream imgname; 
     for (int i = 0; i < 100; ++i){
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
@@ -614,16 +616,18 @@ int main(int argc, char* argv[])
             img = full_img;
         full_img.release();
         Size img_size = img.size();                
+	imgname<<"full_img"<<img_idx<<".png"; imwrite(imgname.str(), img); imgname.str("");
 
         // Warp the current image
-        warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
-                     img_warped);
+        warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, 
+		     img_warped, INTER_LINEAR, BORDER_CONSTANT);
 
         // Warp the current image mask
         mask.create(img_size, CV_8U);
         mask.setTo(Scalar::all(255));    
         warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
-                     INTER_NEAREST, BORDER_CONSTANT);
+                     INTER_LINEAR, BORDER_CONSTANT);
+//                      INTER_NEAREST, BORDER_CONSTANT);
 
         // Compensate exposure
         compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
@@ -636,7 +640,6 @@ int main(int argc, char* argv[])
         dilate(masks_warped[img_idx], dilated_mask, Mat());
         resize(dilated_mask, seam_mask, mask_warped.size());
         mask_warped = seam_mask & mask_warped;
-	imwrite("tp_imgwarpeds.png", img_warped_s);
 
         if (blender.empty())
         {            
@@ -659,6 +662,8 @@ int main(int argc, char* argv[])
             }
             blender->prepare(corners, sizes);
         }
+	// Test code
+	imgname<<"imgwarp_s"<<img_idx<<".png"; imwrite(imgname.str(), img_warped_s);imgname.str("");;
 
         // Blend the current image
         blender->feed(img_warped_s, mask_warped, corners[img_idx]);        
@@ -669,9 +674,8 @@ int main(int argc, char* argv[])
 
     LOGLN("Compositing, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
-    // imwrite(result_name, result);
+    imwrite(result_name, result);
     // Create a window to show the result (maybe a video)
-    imwrite("matchresult.png", result);
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);
     imshow("video_stitching", result);
     waitKey(100000);
