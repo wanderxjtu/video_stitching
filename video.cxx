@@ -340,14 +340,10 @@ int main(int argc, char* argv[])
     {
 	LOGLN("Vide initializing");
 	for (int i = 0; i < num_images; ++i){
-	  // FIXME error handler;
-// 	  try{
-	    video[i].open(atoi(img_names[i].c_str()));
-// 	  }
-// 	  catch(){
-// 	    LOGLN("Video device not ready");
-// 	    return -1;
-// 	  }
+	    if (! video[i].open(atoi(img_names[i].c_str())) ){
+		LOG("Device #"<<img_names[i]<<" open error.");
+		exit(1);
+	    }
 	}
 	// Wait for about 2 sec to initializing the cameras
 	for (int j=50; j>0; --j) 
@@ -356,15 +352,10 @@ int main(int argc, char* argv[])
     }
       
 
-//   do{
     for (int i = 0; i < num_images; ++i)
     {
         if ( is_video ) {
 	    video[i]>>full_img;
-// 	    namedWindow("test",CV_WINDOW_AUTOSIZE);
-// 	    LOGLN("show captured img");
-// 	    imshow("test",full_img);
-// 	    waitKey(120);
 	} else {
 	    full_img = imread(img_names[i]);
 	}
