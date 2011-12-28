@@ -55,7 +55,6 @@ void FeaturesFinder::operator ()(const Mat &image, ImageFeatures &features)
 { 
     find(image, features);
     features.img_size = image.size();
-    //features.img = image.clone();
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -175,7 +174,51 @@ void SurfFeaturesFinder::releaseMemory()
 {
     impl_->releaseMemory();
 }
+//////////////////////////////////////////////////////////////////////////////
 
+OrbFeaturesFinder::OrbFeaturesFinder(Size _grid_size, size_t n_features, const ORB::CommonParams & detector_params)
+{
+    grid_size = _grid_size;
+    orb = new ORB(n_features * (99 + grid_size.area())/100/grid_size.area(), detector_params);
+}
+
+void OrbFeaturesFinder::find(const Mat &image, ImageFeatures &features)
+{
+    Mat gray_image;
+    CV_Assert(image.type() == CV_8UC3);
+    cvtColor(image, gray_image, CV_BGR2GRAY);
+
+    if (grid_size.area() == 1)
+        (*orb)(gray_image, Mat(), features.keypoints, features.descriptors);
+    else
+    {
+        features.keypoints.clear();
+        features.descriptors.release();
+
+        std::vector<KeyPoint> points;
+        Mat descriptors;
+
+        for (int r = 0; r < grid_size.height; ++r)
+            for (int c = 0; c < grid_size.width; ++c)
+            {
+                int xl = c * gray_image.cols / grid_size.width;
+                int yl = r * gray_image.rows / grid_size.height;
+                int xr = (c+1) * gray_image.cols / grid_size.width;
+                int yr = (r+1) * gray_image.rows / grid_size.height;
+
+                (*orb)(gray_image(Range(yl, yr), Range(xl, xr)), Mat(), points, descriptors);
+
+                features.keypoints.reserve(features.keypoints.size() + points.size());
+                for (std::vector<KeyPoint>::iterator kp = points.begin(); kp != points.end(); ++kp)
+                {
+                    kp->pt.x += xl;
+                    kp->pt.y += yl;
+                    features.keypoints.push_back(*kp);
+                }
+                features.descriptors.push_back(descriptors);
+            }
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -314,13 +357,23 @@ namespace
 
     void CpuMatcher::match(const ImageFeatures &features1, const ImageFeatures &features2, MatchesInfo& matches_info)
     {
+        CV_Assert(features1.descriptors.type() == features2.descriptors.type());
+        CV_Assert(features2.descriptors.depth() == CV_8U || features2.descriptors.depth() == CV_32F);
         matches_info.matches.clear();
-        FlannBasedMatcher matcher;
+        
+        Ptr<DescriptorMatcher> matcher;
+        if (features2.descriptors.depth() == CV_8U){
+            matcher= new BruteForceMatcher<Hamming>;
+        }else{
+            Ptr<flann::IndexParams> indexParams = new flann::KDTreeIndexParams();
+            Ptr<flann::SearchParams> searchParams = new flann::SearchParams();
+            matcher= new FlannBasedMatcher(indexParams, searchParams);
+        }
         vector< vector<DMatch> > pair_matches;        
         MatchesSet matches;
 
         // Find 1->2 matches
-        matcher.knnMatch(features1.descriptors, features2.descriptors, pair_matches, 2);
+        matcher->knnMatch(features1.descriptors, features2.descriptors, pair_matches,2);
         for (size_t i = 0; i < pair_matches.size(); ++i)
         {
             if (pair_matches[i].size() < 2)
@@ -336,7 +389,7 @@ namespace
 
         // Find 2->1 matches
         pair_matches.clear();
-        matcher.knnMatch(features2.descriptors, features1.descriptors, pair_matches, 2);
+        matcher->knnMatch(features2.descriptors, features1.descriptors, pair_matches,2);
         for (size_t i = 0; i < pair_matches.size(); ++i)
         {
             if (pair_matches[i].size() < 2)
@@ -349,7 +402,6 @@ namespace
         }
     }
        
-
     void GpuMatcher::match(const ImageFeatures &features1, const ImageFeatures &features2, MatchesInfo& matches_info)
     {
         matches_info.matches.clear(); 
@@ -360,13 +412,20 @@ namespace
         descriptors1_.upload(features1.descriptors);
         descriptors2_.upload(features2.descriptors);
 
-        BruteForceMatcher_GPU< L2<float> > matcher;
+        // TODO: No devices, need test here. 
+        Ptr<BruteForceMatcher_GPU_base> matcher;
+        if (features2.descriptors.depth() == CV_8U){
+            matcher = new BruteForceMatcher_GPU< Hamming >;
+        }else{
+            matcher = new BruteForceMatcher_GPU< L2<float> >;
+        }
+        
         MatchesSet matches;
 
         // Find 1->2 matches
         pair_matches.clear();
-        matcher.knnMatch(descriptors1_, descriptors2_, train_idx_, distance_, all_dist_, 2);
-        matcher.knnMatchDownload(train_idx_, distance_, pair_matches);
+        matcher->knnMatch(descriptors1_, descriptors2_, train_idx_, distance_, all_dist_, 2);
+        matcher->knnMatchDownload(train_idx_, distance_, pair_matches);
         for (size_t i = 0; i < pair_matches.size(); ++i)
         {
             if (pair_matches[i].size() < 2)
@@ -382,8 +441,8 @@ namespace
 
         // Find 2->1 matches
         pair_matches.clear();
-        matcher.knnMatch(descriptors2_, descriptors1_, train_idx_, distance_, all_dist_, 2);
-        matcher.knnMatchDownload(train_idx_, distance_, pair_matches);
+        matcher->knnMatch(descriptors2_, descriptors1_, train_idx_, distance_, all_dist_, 2);
+        matcher->knnMatchDownload(train_idx_, distance_, pair_matches);
         for (size_t i = 0; i < pair_matches.size(); ++i)
         {
             if (pair_matches[i].size() < 2)
@@ -396,20 +455,19 @@ namespace
         }
     }
 
-    void GpuMatcher::releaseMemory()
-    {
-        descriptors1_.release();
+    void GpuMatcher::releaseMemory() { descriptors1_.release();
         descriptors2_.release();
         train_idx_.release();
         distance_.release();
         all_dist_.release();
         vector< vector<DMatch> >().swap(pair_matches);
     }
-
 } // anonymous namespace
 
 
-BestOf2NearestMatcher::BestOf2NearestMatcher(bool try_use_gpu, float match_conf, int num_matches_thresh1, int num_matches_thresh2)
+BestOf2NearestMatcher::BestOf2NearestMatcher(bool try_use_gpu, float match_conf,
+                                             int num_matches_thresh1, int num_matches_thresh2)
+                                             
 {
     bool use_gpu = false;
     if (try_use_gpu && getCudaEnabledDeviceCount() > 0)
@@ -419,10 +477,12 @@ BestOf2NearestMatcher::BestOf2NearestMatcher(bool try_use_gpu, float match_conf,
             use_gpu = true;
     }
 
+ 
     if (use_gpu)
         impl_ = new GpuMatcher(match_conf);
     else
-        impl_ = new CpuMatcher(match_conf);
+ 
+    impl_ = new CpuMatcher(match_conf);
 
     is_thread_safe_ = impl_->isThreadSafe();
     num_matches_thresh1_ = num_matches_thresh1;
@@ -464,7 +524,7 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
     }
 
     // Find pair-wise motion
-    matches_info.H = findHomography(src_points, dst_points, matches_info.inliers_mask, CV_RANSAC);
+    matches_info.H = findHomography(src_points, dst_points, matches_info.inliers_mask, CV_LMEDS);
     if (std::abs(determinant(matches_info.H)) < numeric_limits<double>::epsilon())
 	return;
 
@@ -477,11 +537,12 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
     // These coeffs are from paper M. Brown and D. Lowe. "Automatic Panoramic Image Stitching 
     // using Invariant Features"
     matches_info.confidence = matches_info.num_inliers / (8 + 0.3*matches_info.matches.size());
-    LOGLN("matches confidence:"<<matches_info.confidence);
+    LOGLN("\nmatches confidence:"<<matches_info.confidence);
+    LOGLN("match pairs:"<<matches_info.matches.size());
     
     // Set zero confidence to remove matches between too close images, as they don't provide 
     // additional information anyway. The threshold was set experimentally.
-    //matches_info.confidence = matches_info.confidence > 3. ? 0. : matches_info.confidence;
+    matches_info.confidence = matches_info.confidence > 3. ? 0. : matches_info.confidence;
     
     // Check if we should try to refine motion
     if (matches_info.num_inliers < num_matches_thresh2_)
@@ -519,3 +580,4 @@ void BestOf2NearestMatcher::releaseMemory()
 {
     impl_->releaseMemory();
 }
+

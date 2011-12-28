@@ -1,4 +1,5 @@
 set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS true)
 
 # Following block can broke build in case of cross-compilng
@@ -29,7 +30,7 @@ include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
-set(stitching_libs opencv_core opencv_imgproc opencv_highgui opencv_features2d opencv_calib3d opencv_gpu)
+set(stitching_libs opencv_core opencv_imgproc opencv_highgui opencv_features2d opencv_calib3d opencv_gpu opencv_flann)
 
 FILE(GLOB stitching_files "*.hpp" "*.cpp")
 
@@ -37,7 +38,7 @@ set(the_target opencv_stitching)
 set(video_target video_stitching)    
 
 add_executable(${the_target} ${stitching_files} "main.cxx")
-add_executable(${video_target} ${stitching_files} "video.cxx")
+add_executable(${video_target} ${stitching_files} "video2.cxx")
 
 add_dependencies(${the_target} ${stitching_libs})
 set_target_properties(${the_target} PROPERTIES

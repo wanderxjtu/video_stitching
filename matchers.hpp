@@ -81,6 +81,17 @@ protected:
     cv::Ptr<FeaturesFinder> impl_;
 };
 
+class OrbFeaturesFinder : public FeaturesFinder
+{
+public:
+    OrbFeaturesFinder(cv::Size _grid_size = cv::Size(3,1), size_t n_features = 1500, const cv::ORB::CommonParams & detector_params = cv::ORB::CommonParams(1.3f, 5));
+
+private:
+    void find(const cv::Mat &image, ImageFeatures &features);
+
+    cv::Ptr<cv::ORB> orb;
+    cv::Size grid_size;
+};
 
 struct MatchesInfo
 {
@@ -123,8 +134,8 @@ protected:
 class BestOf2NearestMatcher : public FeaturesMatcher
 {
 public:
-    BestOf2NearestMatcher(bool try_use_gpu = true, float match_conf = 0.55f, int num_matches_thresh1 = 6, 
-                          int num_matches_thresh2 = 6);
+    BestOf2NearestMatcher(bool try_use_gpu = true, float match_conf = 0.55f, 
+                          int num_matches_thresh1 = 6, int num_matches_thresh2 = 6);
 
     void releaseMemory();
 
