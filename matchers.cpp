@@ -198,15 +198,18 @@ void OrbFeaturesFinder::find(const Mat &image, ImageFeatures &features)
         std::vector<KeyPoint> points;
         Mat descriptors;
 
-        for (int r = 0; r < grid_size.height; ++r)
-            for (int c = 0; c < grid_size.width; ++c)
+        for (int c = 0; c < grid_size.width; ++c)
+            for (int r = 0; r < grid_size.height; ++r)
             {
                 int xl = c * gray_image.cols / grid_size.width;
                 int yl = r * gray_image.rows / grid_size.height;
-                int xr = (c+1) * gray_image.cols / grid_size.width;
-                int yr = (r+1) * gray_image.rows / grid_size.height;
+                int xr = (c+1) * gray_image.cols / grid_size.width-1;
+                int yr = (r+1) * gray_image.rows / grid_size.height-1;
 
-                (*orb)(gray_image(Range(yl, yr), Range(xl, xr)), Mat(), points, descriptors);
+                LOGLN(xl<<" "<<xr<<" "<<yl<<" "<<yr);
+                LOGLN(gray_image.cols<<" "<<gray_image.rows);
+                (*orb)(gray_image(Range(yl,yr),Range(xl,xr)), Mat(), points, descriptors);
+                LOGLN("isHere?");
 
                 features.keypoints.reserve(features.keypoints.size() + points.size());
                 for (std::vector<KeyPoint>::iterator kp = points.begin(); kp != points.end(); ++kp)

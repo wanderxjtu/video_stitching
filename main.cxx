@@ -71,6 +71,8 @@ void printUsage()
         "  --try_gpu (yes|no)\n"
         "      Try to use GPU. The default value is 'no'. All default values\n"
         "      are for CPU mode.\n"
+        "\nFeature Flags"
+        "  --method (surf|orb)\n"
         "\nMotion Estimation Flags:\n"
         "  --work_megapix <float>\n"
         "      Resolution for image registration step. The default is 0.6 Mpx.\n"
@@ -108,6 +110,7 @@ void printUsage()
 vector<string> img_names;
 bool preview = false;
 bool try_gpu = false;
+string feature_type = "surf";
 double work_megapix = 0.6;
 double seam_megapix = 0.1;
 double compose_megapix = -1;
@@ -151,6 +154,15 @@ int parseCmdArgs(int argc, char** argv)
             {
                 cout << "Bad --try_gpu flag value\n";
                 return -1;
+            }
+            i++;
+        }
+        else if (string(argv[i]) == "--method")
+        {
+            if (string(argv[i+1]) == "surf" || string(argv[i+1]) == "orb"){
+                feature_type = string(argv[i+1]);
+            }else{
+                cout << "Bad --method flag value, will use "<<feature_type<<"\n";
             }
             i++;
         }
@@ -317,7 +329,14 @@ int main(int argc, char* argv[])
     int64 t = getTickCount();
 
     vector<ImageFeatures> features(num_images);
-    SurfFeaturesFinder finder(try_gpu);
+    Ptr<FeaturesFinder> finder;
+    if (feature_type == "surf") {
+        LOGLN("Using surf");
+        finder = new SurfFeaturesFinder(try_gpu);
+    } else if (feature_type =="orb") {
+        LOGLN("Using orb");
+        finder = new OrbFeaturesFinder(Size(1,1));
+    }
     Mat full_img, img;
 
     vector<Mat> images(num_images);
@@ -356,7 +375,7 @@ int main(int argc, char* argv[])
             is_seam_scale_set = true;
         }
 
-        finder(img, features[i]);
+        (*finder)(img, features[i]);
         features[i].img_idx = i;
         LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
 
@@ -364,7 +383,7 @@ int main(int argc, char* argv[])
         images[i] = img.clone();
     }
 
-    finder.releaseMemory();
+    finder->releaseMemory();
 
     full_img.release();
     img.release();

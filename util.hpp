@@ -45,16 +45,22 @@
 #include <list>
 #include "precomp.hpp"
 
-#define ENABLE_LOG 1
+#include <iostream>
+#define DEBUG 1
+
+#ifdef DEBUG 
+  #define ENABLE_LOG 1
+#endif
 
 #if ENABLE_LOG
-  #include <iostream>
   #define LOG(msg) { std::cout << msg; std::cout.flush(); }
 #else
   #define LOG(msg)
 #endif
 
 #define LOGLN(msg) LOG(msg << std::endl)
+
+#define WARNING(msg) { std::cerr <<msg <<std::endl; std::cout.flush(); }
 
 
 class DjSets
