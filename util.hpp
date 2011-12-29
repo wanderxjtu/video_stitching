@@ -46,8 +46,9 @@
 #include "precomp.hpp"
 
 #include <iostream>
-#define DEBUG 1
+#include <omp.h>
 
+#define DEBUG 1
 #ifdef DEBUG 
   #define ENABLE_LOG 1
 #endif

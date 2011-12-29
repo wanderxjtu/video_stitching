@@ -1,6 +1,9 @@
+cmake_minimum_required(VERSION 2.6)
+
 set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS true)
+
 
 # Following block can broke build in case of cross-compilng
 # but CMAKE_CROSSCOMPILING variable will be set only on project(OpenCV) command
@@ -25,6 +28,9 @@ if(NOT CMAKE_TOOLCHAIN_FILE)
 endif(NOT CMAKE_TOOLCHAIN_FILE)
 
 project(stitching)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
 
 include_directories(
     "${CMAKE_CURRENT_SOURCE_DIR}"
