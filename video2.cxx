@@ -338,17 +338,18 @@ int main(int argc, char* argv[])
     // Check & open video devices
     vector<VideoCapture> video(num_images);
     LOGLN("Vide initializing");
+#pragma omp parallel for
     for (int i = 0; i < num_images; ++i){
+        Mat fullimg;
         if (! video[i].open(atoi(img_names[i].c_str())) ){
             LOG("Device #"<<img_names[i]<<" open error.");
             exit(1);
         }
+        // Wait for about 2 sec to initializing the cameras
+        for (int j=50; j>0; --j) 
+            video[i]>>fullimg;
+        fullimg.release();
     }
-    // Wait for about 2 sec to initializing the cameras
-    Mat full_img;
-    for (int j=50; j>0; --j) 
-        for (int i = 0; i < num_images; ++i)
-            video[i]>>full_img;
       
     // Create a window to show the result (maybe a video)
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
@@ -357,7 +358,7 @@ int main(int argc, char* argv[])
     double frame_time=0;
     int64 t, real_start_time, frame_start_time;
     real_start_time=getTickCount();
-    // finding features in
+    
     Ptr<FeaturesFinder> finder;
     if (feature_type == "surf") {
         LOGLN("Using surf");
@@ -374,7 +375,6 @@ int main(int argc, char* argv[])
         frame_start_time = t;
         double seam_work_aspect = 1;
         
-        Mat img;
     
         LOGLN("Finding features...");
         
@@ -385,24 +385,28 @@ int main(int argc, char* argv[])
         vector<ImageFeatures> features(num_images);
         vector<Mat> images(num_images);
         
+    #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
         {
-            video[i]>>full_img;
-            if (full_img.empty())
+            Mat fullimg, fimg;
+            video[i]>>fullimg;
+            if (fullimg.empty())
             {
                 LOGLN("Can't open image " << img_names[i]);
-                return -1;
+                exit(-1);
             }
+            resize(fullimg, fimg, Size(), work_scale, work_scale);
+            (*finder)(fimg, features[i]);
             
-            resize(full_img, img, Size(), work_scale, work_scale);
-
-            (*finder)(img, features[i]);
             features[i].img_idx = i;
             LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
 
             if (seam_scale!=work_scale)
-                resize(full_img, img, Size(), seam_scale, seam_scale);
-            images[i] = img.clone();
+                resize(fullimg, fimg, Size(), seam_scale, seam_scale);
+            images[i] = fimg.clone();
+            
+            fimg.release();
+            fullimg.release();
         }
 
         LOGLN("Finding features, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
@@ -426,30 +430,23 @@ int main(int argc, char* argv[])
         // Check if images are sure from the same panorama
         vector<int> indices;
         indices.clear();
-        for(int idx=0;idx<num_images;++idx) { indices.push_back(idx);}
-        
         indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
         if (indices.size() != num_images) {
             LOGLN("Image match failed");
             continue;
         }
         
-        full_img.release();
-        img.release();
-        finder->releaseMemory();
     
 /*
  * Comment out for debug.
  * Only useful when more than 2 cams out there.
  * 
         vector<Mat> img_subset;
-        vector<Size> full_img_sizes_subset;
         for (size_t i = 0; i < indices.size(); ++i)
         {
             img_subset.push_back(images[indices[i]]);
         }
         images = img_subset;
-
         // Check if we still have enough images
         num_images = static_cast<int>(images.size());
         if (num_images < 2)
@@ -478,11 +475,11 @@ int main(int argc, char* argv[])
             cameras[i].R = R;
             //FIXME: the calculated focal works not so well, and we use a fixed value here.
             // should be adjusted after changing cameras;
-            cameras[i].focal = 560;
+            //cameras[i].focal = 560;
         }
 /*
  * Bundle adjustment code can be remove safely,
- * it will save about 0.3 seconds.
+ * it will save about 0.2-0.5 seconds per frame.
  * BUT that may damage images qualities;
  */
         LOG("Bundle adjustment");
@@ -566,57 +563,49 @@ int main(int argc, char* argv[])
         LOGLN("Finding seams, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
         // Release unused memory
-//        images.clear();
-        images_warped.clear();
         images_warped_f.clear();
         masks.clear();
 
         LOGLN("Compositing...");
         t = getTickCount();
 
-        Mat img_warped, img_warped_s;
-        Mat dilated_mask, seam_mask, mask, mask_warped;
         Ptr<Blender> blender;
-        double compose_seam_aspect = 1;
-        double compose_work_aspect = 1;
+        //double compose_seam_aspect = 1;
+        //double compose_work_aspect = 1;
 
         // Here we start to compositing images
-        // For video, recapture a frame and compose seems works fine
-        // So maybe loop this proc can produce a stitched video
         stringstream imgname; 
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
         {
             LOGLN("Compositing image #" << indices[img_idx]+1);
-            img=images[img_idx].clone();
-/*
- */
-            Size img_size = img.size();                
+            Size img_size = images[img_idx].size();                
 #ifdef DEBUG
-            imgname<<"full_img"<<img_idx<<".png"; imwrite(imgname.str(), img); imgname.str("");
+            imgname<<"full_img"<<img_idx<<".png"; imwrite(imgname.str(), images[img_idx]); imgname.str("");
 #endif
-
+            /*
             // Warp the current image
             warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, 
                         img_warped, INTER_LINEAR, BORDER_CONSTANT);
-
             // Warp the current image mask
             mask.create(img_size, CV_8U);
             mask.setTo(Scalar::all(255));    
             warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
                         INTER_LINEAR, BORDER_CONSTANT);
-    //                      INTER_NEAREST, BORDER_CONSTANT);
-
+            //            INTER_NEAREST, BORDER_CONSTANT);
+            */
+            /*
             // Compensate exposure
-            //compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
+            compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
+            */
 
-            img_warped.convertTo(img_warped_s, CV_16S);
-            img_warped.release();
-            img.release();
-            mask.release();       
-
+            Mat img_warped_s;
+            images_warped[img_idx].convertTo(img_warped_s, CV_16S);
+            images_warped[img_idx].release();
+            
+            Mat dilated_mask, seam_mask, mask_warped;
             dilate(masks_warped[img_idx], dilated_mask, Mat());
-            resize(dilated_mask, seam_mask, mask_warped.size());
-            mask_warped = seam_mask & mask_warped;
+            resize(dilated_mask, seam_mask, masks_warped[img_idx].size());
+            mask_warped = seam_mask & masks_warped[img_idx];
 
             if (blender.empty())
             {            
