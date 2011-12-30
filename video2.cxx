@@ -328,6 +328,8 @@ int main(int argc, char* argv[])
     // Check & open video devices
     vector<VideoCapture> video(num_images);
     LOGLN("Video devices initializing");
+    
+    cout<<omp_get_num_procs()<<endl;
 #pragma omp parallel for
     for (int i = 0; i < num_images; ++i){
         Mat fullimg;
@@ -345,8 +347,9 @@ int main(int argc, char* argv[])
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
     
     int frame_count=0;
-    double frame_time=0;
     int64 t, real_start_time, frame_start_time;
+    int64 frame_time=0; 
+    int64 frame_totaltime=0;
     real_start_time=getTickCount();
     
     Ptr<FeaturesFinder> finder;
@@ -364,11 +367,10 @@ int main(int argc, char* argv[])
         t = getTickCount();
         frame_start_time = t;
         double seam_work_aspect = 1;
-        
     
         LOGLN("Finding features...");
         
-        // !! So the frame number (frame_n) start from 1 !!
+        // !! So the frame number (frame_count) start from 1 !!
         ++ frame_count;
         LOGLN("Round "<< frame_count);
         
@@ -380,6 +382,10 @@ int main(int argc, char* argv[])
         {
             Mat fullimg, fimg;
             video[i]>>fullimg;
+#ifdef DEBUG
+            stringstream imgname;
+            imgname<<"full_img"<<i<<".png"; imwrite(imgname.str(), fullimg); imgname.str("");
+#endif
             if (fullimg.empty())
             {
                 LOGLN("Can't open image " << img_names[i]);
@@ -416,7 +422,6 @@ int main(int argc, char* argv[])
             test_out.release();
         }
 #endif
-        
         // Check if images are sure from the same panorama
         vector<int> indices;
         indices.clear();
@@ -425,10 +430,7 @@ int main(int argc, char* argv[])
             LOGLN("Image match failed");
             continue;
         }
-        
-    
 /*
- * Comment out for debug.
  * Only useful when more than 2 cams out there.
  * 
         vector<Mat> img_subset;
@@ -445,12 +447,6 @@ int main(int argc, char* argv[])
             continue;
         }
  */
-
-/* 
- * TODO:
- * How to remove code like below?
- * I just need to stitching images but not care about the qualities
- */
         LOGLN("Estimating rotations...");
         t = getTickCount();
         HomographyBasedEstimator estimator;
@@ -464,15 +460,9 @@ int main(int argc, char* argv[])
             Mat R;
             cameras[i].R.convertTo(R, CV_32F);
             cameras[i].R = R;
-            //FIXME: the calculated focal works not so well, and we use a fixed value here.
-            // should be adjusted after changing cameras;
-            //cameras[i].focal = 5000;
         }
-/*
- * Bundle adjustment code can be remove safely,
- * it will save about 0.2-0.5 seconds per frame.
- * BUT that may damage images qualities;
- */
+        
+        // Bundle adjustment
         LOG("Bundle adjustment");
         t = getTickCount();
         BundleAdjuster adjuster(ba_space, conf_thresh);
@@ -492,8 +482,6 @@ int main(int argc, char* argv[])
         float warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
         LOGLN("warp image scale:"<<warped_image_scale);
         /*
-         * Comment out for qualities test and speedup
-         * 
         if (wave_correct)
         {
             LOGLN("Wave correcting...");
@@ -508,7 +496,6 @@ int main(int argc, char* argv[])
             LOGLN("Wave correcting, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         }
         */
-
         LOGLN("Warping images (auxiliary)... ");
         t = getTickCount();
 
@@ -525,7 +512,7 @@ int main(int argc, char* argv[])
             masks[i].create(images[i].size(), CV_8U);
             masks[i].setTo(Scalar::all(255));
         }
-
+        
         // Warp images and their masks
         vector<Mat> images_warped_f(num_images);
     #pragma omp parallel for
@@ -540,8 +527,6 @@ int main(int argc, char* argv[])
                         cameras[i].R, masks_warped[i], INTER_LINEAR, BORDER_CONSTANT);
             images_warped[i].convertTo(images_warped_f[i], CV_32F);
         }
-
-//        for (int i = 0; i < num_images; ++i)
 
         LOGLN("Warping images, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
@@ -570,16 +555,34 @@ int main(int argc, char* argv[])
         //double compose_seam_aspect = 1;
         //double compose_work_aspect = 1;
 
+        if (blender.empty())
+        {            
+            blender = Blender::createDefault(blend_type, try_gpu);
+            Size dst_sz = resultRoi(corners, sizes).size();
+            float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
+            if (blend_width < 1.f)
+                blender = Blender::createDefault(Blender::NO, try_gpu);
+            else if (blend_type == Blender::MULTI_BAND)
+            {
+                MultiBandBlender* mb = dynamic_cast<MultiBandBlender*>(static_cast<Blender*>(blender));
+                mb->setNumBands(static_cast<int>(ceil(log(blend_width)/log(2.)) - 1.));
+                LOGLN("Multi-band blender, number of bands: " << mb->numBands());
+            }
+            else if (blend_type == Blender::FEATHER)
+            {
+                FeatherBlender* fb = dynamic_cast<FeatherBlender*>(static_cast<Blender*>(blender));
+                fb->setSharpness(1.f/blend_width);
+                LOGLN("Feather blender, number of bands: " << fb->sharpness());
+            }
+            blender->prepare(corners, sizes);
+        }
+            
         // Here we start to compositing images
-        stringstream imgname; 
-//    #pragma omp parallel for
+    #pragma omp parallel for
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
         {
             LOGLN("Compositing image #" << indices[img_idx]+1);
             Size img_size = images[img_idx].size();                
-#ifdef DEBUG
-            imgname<<"full_img"<<img_idx<<".png"; imwrite(imgname.str(), images[img_idx]); imgname.str("");
-#endif
             /*
             // Compensate exposure
             compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
@@ -594,31 +597,10 @@ int main(int argc, char* argv[])
             resize(dilated_mask, seam_mask, masks_warped[img_idx].size());
             mask_warped = seam_mask & masks_warped[img_idx];
 
-            if (blender.empty())
-            {            
-                blender = Blender::createDefault(blend_type, try_gpu);
-                Size dst_sz = resultRoi(corners, sizes).size();
-                float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
-                if (blend_width < 1.f)
-                    blender = Blender::createDefault(Blender::NO, try_gpu);
-                else if (blend_type == Blender::MULTI_BAND)
-                {
-                    MultiBandBlender* mb = dynamic_cast<MultiBandBlender*>(static_cast<Blender*>(blender));
-                    mb->setNumBands(static_cast<int>(ceil(log(blend_width)/log(2.)) - 1.));
-                    LOGLN("Multi-band blender, number of bands: " << mb->numBands());
-                }
-                else if (blend_type == Blender::FEATHER)
-                {
-                    FeatherBlender* fb = dynamic_cast<FeatherBlender*>(static_cast<Blender*>(blender));
-                    fb->setSharpness(1.f/blend_width);
-                    LOGLN("Feather blender, number of bands: " << fb->sharpness());
-                }
-                blender->prepare(corners, sizes);
-            }
 #ifdef DEBUG
+            stringstream imgname; 
             imgname<<"imgwarp_s"<<img_idx<<".png"; imwrite(imgname.str(), img_warped_s);imgname.str("");;
 #endif
-
             // Blend the current image
             blender->feed(img_warped_s, mask_warped, corners[img_idx]);        
         }
@@ -627,8 +609,9 @@ int main(int argc, char* argv[])
         blender->blend(result, result_mask);
 
         LOGLN("Compositing, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        frame_time = (getTickCount() - frame_start_time) / getTickFrequency();
-        WARNING(">>>>>>>>>>>>>>FRAME "<< frame_count << " Finished, time: " << frame_time << " sec");
+        frame_time = getTickCount() - frame_start_time;
+        WARNING(">>>>>>>>>>>>>>FRAME "<< frame_count << " Finished, time: " << frame_time / getTickFrequency() << " sec");
+        frame_totaltime+=frame_time;
 
 #ifdef DEBUG
         imwrite(result_name, result);
@@ -643,13 +626,12 @@ int main(int argc, char* argv[])
             return 0;
             break;
         } 
-    }while(frame_count < 50);
+    }while(frame_count <= 50);
     
     finder->releaseMemory();
     matcher.releaseMemory();
     
-    double frame_totaltime = (getTickCount() - real_start_time) / getTickFrequency();
-    WARNING(">>>>>>>>>>>>>>FRAME AVG TIME "<< frame_totaltime/frame_count);
+    WARNING("Frame average time: "<< frame_totaltime/ getTickFrequency() / frame_count);
     WARNING("Program total running time: " << ((getTickCount() - app_start_time) / getTickFrequency()) << " sec");
     exit(0);
 }

@@ -48,12 +48,9 @@
 #include <iostream>
 #include <omp.h>
 
-//#define DEBUG 1
-#ifdef DEBUG 
-  #define ENABLE_LOG 1
-#endif
+#define DEBUG 1
 
-#if ENABLE_LOG
+#ifdef DEBUG 
   #define LOG(msg) { std::cout << msg; std::cout.flush(); }
 #else
   #define LOG(msg)

@@ -337,25 +337,25 @@ int main(int argc, char* argv[])
         LOGLN("Using orb");
         finder = new OrbFeaturesFinder(Size(1,1));
     }
-    Mat full_img, img;
-
     vector<Mat> images(num_images);
     vector<Size> full_img_sizes(num_images);
     double seam_work_aspect = 1;
 
+#pragma omp parallel for
     for (int i = 0; i < num_images; ++i)
     {
-        full_img = imread(img_names[i]);
-        full_img_sizes[i] = full_img.size();
+        Mat fullimg, fimg;
+        fullimg = imread(img_names[i]);
+        full_img_sizes[i] = fullimg.size();
 
-        if (full_img.empty())
+        if (fullimg.empty())
         {
             LOGLN("Can't open image " << img_names[i]);
-            return -1;
+            exit(-1);
         }
         if (work_megapix < 0)
         {
-            img = full_img;
+            fimg = fullimg;
             work_scale = 1;
             is_work_scale_set = true;
         }
@@ -363,30 +363,27 @@ int main(int argc, char* argv[])
         {
             if (!is_work_scale_set)
             {
-                work_scale = min(1.0, sqrt(work_megapix * 1e6 / full_img.size().area()));                    
+                work_scale = min(1.0, sqrt(work_megapix * 1e6 / fullimg.size().area()));                    
                 is_work_scale_set = true;
             }
-            resize(full_img, img, Size(), work_scale, work_scale);
+            resize(fullimg, fimg, Size(), work_scale, work_scale);
         }
         if (!is_seam_scale_set)
         {
-            seam_scale = min(1.0, sqrt(seam_megapix * 1e6 / full_img.size().area()));                    
+            seam_scale = min(1.0, sqrt(seam_megapix * 1e6 / fullimg.size().area()));                    
             seam_work_aspect = seam_scale / work_scale;
             is_seam_scale_set = true;
         }
 
-        (*finder)(img, features[i]);
+        (*finder)(fimg, features[i]);
         features[i].img_idx = i;
         LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
 
-        resize(full_img, img, Size(), seam_scale, seam_scale);
-        images[i] = img.clone();
+        if (work_scale != seam_scale) resize(fullimg, fimg, Size(), seam_scale, seam_scale);
+        images[i] = fimg.clone();
     }
 
     finder->releaseMemory();
-
-    full_img.release();
-    img.release();
 
     LOGLN("Finding features, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
@@ -399,32 +396,28 @@ int main(int argc, char* argv[])
     LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
     // Leave only images we are sure are from the same panorama
-    vector<int> indices;
-    for (size_t i = 0; i < num_images; ++i)
-	indices.push_back(i);
-    
-//     vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
-//     vector<Mat> img_subset;
-//     vector<string> img_names_subset;
-//     vector<Size> full_img_sizes_subset;
-//     for (size_t i = 0; i < indices.size(); ++i)
-//     {
-//         img_names_subset.push_back(img_names[indices[i]]);
-//         img_subset.push_back(images[indices[i]]);
-//         full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
-//     }
-// 
-//     images = img_subset;
-//     img_names = img_names_subset;
-//     full_img_sizes = full_img_sizes_subset;
-// 
-//     // Check if we still have enough images
-//     num_images = static_cast<int>(img_names.size());
-//     if (num_images < 2)
-//     {
-//         LOGLN("Need more images");
-//         return -1;
-//     }
+    vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
+    vector<Mat> img_subset;
+    vector<string> img_names_subset;
+    vector<Size> full_img_sizes_subset;
+    for (size_t i = 0; i < indices.size(); ++i)
+    {
+        img_names_subset.push_back(img_names[indices[i]]);
+        img_subset.push_back(images[indices[i]]);
+        full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
+    }
+
+    images = img_subset;
+    img_names = img_names_subset;
+    full_img_sizes = full_img_sizes_subset;
+
+    // Check if we still have enough images
+    num_images = static_cast<int>(img_names.size());
+    if (num_images < 2)
+    {
+        LOGLN("Need more images");
+        return -1;
+    }
 
     LOGLN("Estimating rotations...");
     t = getTickCount();
@@ -433,6 +426,7 @@ int main(int argc, char* argv[])
     estimator(features, pairwise_matches, cameras);
     LOGLN("Estimating rotations, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
+#pragma omp parallel for
     for (size_t i = 0; i < cameras.size(); ++i)
     {
         Mat R;
@@ -449,6 +443,7 @@ int main(int argc, char* argv[])
 
     // Find median focal length
     vector<double> focals;
+#pragma omp parallel for
     for (size_t i = 0; i < cameras.size(); ++i)
     {
         LOGLN("Camera #" << indices[i]+1 << " focal length: " << cameras[i].focal);
@@ -479,29 +474,29 @@ int main(int argc, char* argv[])
     vector<Size> sizes(num_images);
     vector<Mat> masks(num_images);
 
-    // Preapre images masks
+#pragma omp parallel for
     for (int i = 0; i < num_images; ++i)
     {
-        masks[i].create(images[i].size(), CV_8U);
-        masks[i].setTo(Scalar::all(255));
     }
 
-    // Warp images and their masks
-    Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
-                                                     warp_type, try_gpu);
+    vector<Mat> images_warped_f(num_images);
+#pragma omp parallel for
     for (int i = 0; i < num_images; ++i)
     {
+        // Preapre images masks
+        masks[i].create(images[i].size(), CV_8U);
+        masks[i].setTo(Scalar::all(255));
+        
+        Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
+                                                        warp_type, try_gpu);
+        // Warp images and their masks
         corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
                                   cameras[i].R, images_warped[i]);
         sizes[i] = images_warped[i].size();
         warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
                      cameras[i].R, masks_warped[i], INTER_NEAREST, BORDER_CONSTANT);
-    }
-
-    vector<Mat> images_warped_f(num_images);
-    for (int i = 0; i < num_images; ++i)
         images_warped[i].convertTo(images_warped_f[i], CV_32F);
-
+    }
     LOGLN("Warping images, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
     LOGLN("Exposure compensation (feed)...");
@@ -525,14 +520,17 @@ int main(int argc, char* argv[])
     LOGLN("Compositing...");
     t = getTickCount();
 
-    Mat img_warped, img_warped_s;
-    Mat dilated_mask, seam_mask, mask, mask_warped;
     Ptr<Blender> blender;
     double compose_seam_aspect = 1;
     double compose_work_aspect = 1;
 
+
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
+        Mat full_img, img;
+        Mat img_warped, img_warped_s;
+        Mat dilated_mask, seam_mask, mask, mask_warped;
+        Ptr<Warper> warper2 = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
         LOGLN("Compositing image #" << indices[img_idx]+1);
 
         // Read image and resize it if necessary
@@ -546,10 +544,9 @@ int main(int argc, char* argv[])
             // Compute relative scales
             compose_seam_aspect = compose_scale / seam_scale;
             compose_work_aspect = compose_scale / work_scale;
-
             // Update warped image scale
             warped_image_scale *= static_cast<float>(compose_work_aspect);
-            warper = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
+            warper2 = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
 
             // Update corners and sizes
             for (int i = 0; i < num_images; ++i)
@@ -564,7 +561,7 @@ int main(int argc, char* argv[])
                     sz.width = cvRound(full_img_sizes[i].width * compose_scale);
                     sz.height = cvRound(full_img_sizes[i].height * compose_scale);
                 }
-                Rect roi = warper->warpRoi(sz, static_cast<float>(cameras[i].focal), cameras[i].R);
+                Rect roi = warper2->warpRoi(sz, static_cast<float>(cameras[i].focal), cameras[i].R);
                 corners[i] = roi.tl();
                 sizes[i] = roi.size();
             }
@@ -577,13 +574,13 @@ int main(int argc, char* argv[])
         Size img_size = img.size();                
 
         // Warp the current image
-        warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
+        warper2->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
                      img_warped);
 
         // Warp the current image mask
         mask.create(img_size, CV_8U);
         mask.setTo(Scalar::all(255));    
-        warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
+        warper2->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
                      INTER_NEAREST, BORDER_CONSTANT);
 
         // Compensate exposure
