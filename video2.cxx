@@ -64,7 +64,7 @@ void printUsage()
 {
     cout << 
         "Rotation model images stitcher.\n\n"
-        "opencv_stitching img1 img2 [...imgN] [flags]\n\n" 
+        "video_stitching dev#1 dev#2 [...dev#N] [flags]\n\n" 
         "Flags:\n"
         "  --preview\n"
         "      Run stitching in the preview mode. Works faster than usual mode,\n"
@@ -118,17 +118,13 @@ double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
-int warp_type = Warper::SPHERICAL;
-//int warp_type = Warper::CYLINDRICAL;
-//int warp_type = Warper::PLANE;
+int warp_type = Warper::PLANE;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::VORONOI;
 int blend_type = Blender::MULTI_BAND;
 float blend_strength = 5;
 string result_name = "result.png";
-bool is_video = true;
-// int video_num = 2;
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -298,10 +294,6 @@ int parseCmdArgs(int argc, char** argv)
             result_name = argv[i + 1];
             i++;
         }
-        else if (string(argv[i]) == "--video")
-        {
-            is_video = true;
-        }
         else
             img_names.push_back(argv[i]);
     }
@@ -326,18 +318,16 @@ int main(int argc, char* argv[])
     int num_images = static_cast<int>(img_names.size());
     if (num_images < 2)
     {
-        LOGLN("Need more images");
+        LOGLN("Need more devices");
         return -1;
     }
     
     double work_scale = 1, seam_scale = 1, compose_scale = 1;
     bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
 
-
-
     // Check & open video devices
     vector<VideoCapture> video(num_images);
-    LOGLN("Vide initializing");
+    LOGLN("Video devices initializing");
 #pragma omp parallel for
     for (int i = 0; i < num_images; ++i){
         Mat fullimg;

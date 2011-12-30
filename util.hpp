@@ -48,7 +48,7 @@
 #include <iostream>
 #include <omp.h>
 
-#define DEBUG 1
+//#define DEBUG 1
 #ifdef DEBUG 
   #define ENABLE_LOG 1
 #endif
