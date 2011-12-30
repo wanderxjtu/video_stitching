@@ -468,6 +468,7 @@ int main(int argc, char* argv[])
         estimator(features, pairwise_matches, cameras);
         LOGLN("Estimating rotations, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
+    #pragma omp parallel for
         for (size_t i = 0; i < cameras.size(); ++i)
         {
             Mat R;
@@ -475,7 +476,7 @@ int main(int argc, char* argv[])
             cameras[i].R = R;
             //FIXME: the calculated focal works not so well, and we use a fixed value here.
             // should be adjusted after changing cameras;
-            //cameras[i].focal = 560;
+            //cameras[i].focal = 5000;
         }
 /*
  * Bundle adjustment code can be remove safely,
@@ -491,6 +492,7 @@ int main(int argc, char* argv[])
         // Find median focal length
         vector<double> focals;
         focals.clear();
+    #pragma omp parallel for
         for (size_t i = 0; i < cameras.size(); ++i)
         {
             LOGLN("Camera #" << indices[i]+1 << " focal length: " << cameras[i].focal);
@@ -499,7 +501,9 @@ int main(int argc, char* argv[])
         nth_element(focals.begin(), focals.begin() + focals.size()/2, focals.end());
         float warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
         LOGLN("warp image scale:"<<warped_image_scale);
-
+        /*
+         * Comment out for qualities test and speedup
+         * 
         if (wave_correct)
         {
             LOGLN("Wave correcting...");
@@ -513,6 +517,7 @@ int main(int argc, char* argv[])
                 cameras[i].R = rmats[i];
             LOGLN("Wave correcting, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         }
+        */
 
         LOGLN("Warping images (auxiliary)... ");
         t = getTickCount();
@@ -524,6 +529,7 @@ int main(int argc, char* argv[])
         vector<Mat> masks(num_images);
 
         // Preapre images masks
+    #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
         {
             masks[i].create(images[i].size(), CV_8U);
@@ -531,20 +537,21 @@ int main(int argc, char* argv[])
         }
 
         // Warp images and their masks
-        Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
-                                                        warp_type, try_gpu);
+        vector<Mat> images_warped_f(num_images);
+    #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
         {
+            Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
+                                                            warp_type, try_gpu);
             corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
                                     cameras[i].R, images_warped[i], INTER_LINEAR, BORDER_CONSTANT);
             sizes[i] = images_warped[i].size();
             warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
                         cameras[i].R, masks_warped[i], INTER_LINEAR, BORDER_CONSTANT);
+            images_warped[i].convertTo(images_warped_f[i], CV_32F);
         }
 
-        vector<Mat> images_warped_f(num_images);
-        for (int i = 0; i < num_images; ++i)
-            images_warped[i].convertTo(images_warped_f[i], CV_32F);
+//        for (int i = 0; i < num_images; ++i)
 
         LOGLN("Warping images, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
@@ -575,6 +582,7 @@ int main(int argc, char* argv[])
 
         // Here we start to compositing images
         stringstream imgname; 
+//    #pragma omp parallel for
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
         {
             LOGLN("Compositing image #" << indices[img_idx]+1);
@@ -582,17 +590,6 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
             imgname<<"full_img"<<img_idx<<".png"; imwrite(imgname.str(), images[img_idx]); imgname.str("");
 #endif
-            /*
-            // Warp the current image
-            warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, 
-                        img_warped, INTER_LINEAR, BORDER_CONSTANT);
-            // Warp the current image mask
-            mask.create(img_size, CV_8U);
-            mask.setTo(Scalar::all(255));    
-            warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
-                        INTER_LINEAR, BORDER_CONSTANT);
-            //            INTER_NEAREST, BORDER_CONSTANT);
-            */
             /*
             // Compensate exposure
             compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
