@@ -92,8 +92,8 @@ class BundleAdjuster : public Estimator
 public:
     enum { RAY_SPACE, FOCAL_RAY_SPACE };
 
-    BundleAdjuster(int cost_space = FOCAL_RAY_SPACE, float conf_thresh = 1.f) 
-        : cost_space_(cost_space), conf_thresh_(conf_thresh) {}
+    BundleAdjuster(int cost_space = FOCAL_RAY_SPACE, float conf_thresh = 1.f, int iter_limit = 0) 
+        : cost_space_(cost_space), conf_thresh_(conf_thresh), err_limit_(iter_limit) {}
 
 private:
     void estimate(const std::vector<ImageFeatures> &features, const std::vector<MatchesInfo> &pairwise_matches, 
@@ -113,6 +113,8 @@ private:
     float conf_thresh_;
     cv::Mat err_, err1_, err2_;
     cv::Mat J_;
+    
+    int err_limit_;
 };
 
 

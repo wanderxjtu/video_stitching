@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 
 #set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS true)
 
 
@@ -29,10 +29,10 @@ endif(NOT CMAKE_TOOLCHAIN_FILE)
 
 project(stitching)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fopenmp -fPIC -Wall -Wno-deprecated -pthread")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=core2 -mfpmath=sse -mtune=core2 ")
+set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG")
 
 
 include_directories(

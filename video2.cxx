@@ -82,6 +82,8 @@ void printUsage()
         "      The default is 1.0.\n"
         "  --ba (ray|focal_ray)\n"
         "      Bundle adjustment cost function. The default is 'focal_ray'.\n"
+        "  --ba_limit <int>\n"
+        "      Bundle adjustment iteration limit. 0 for no limit.\n"
         "  --wave_correct (no|yes)\n"
         "      Perform wave effect correction. The default is 'yes'.\n"
         "\nCompositing Flags:\n"
@@ -116,6 +118,7 @@ double work_megapix = 0.6;
 double seam_megapix = 0.1;
 double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
+int ba_limit = 150;
 float conf_thresh = 1.f;
 bool wave_correct = true;
 int warp_type = Warper::PLANE;
@@ -202,6 +205,11 @@ int parseCmdArgs(int argc, char** argv)
                 cout << "Bad bundle adjustment space\n";
                 return -1;
             }
+            i++;
+        }
+        else if (string(argv[i]) == "--ba_limit")
+        {
+            ba_limit = static_cast<int>(atoi(argv[i + 1]));
             i++;
         }
         else if (string(argv[i]) == "--conf_thresh")
@@ -404,9 +412,10 @@ int main(int argc, char* argv[])
             fimg.release();
             fullimg.release();
         }
-
+        // TODO:check the cameras sequences in first frame. 
+        // swap the devices will be good, but do we realy need that?.
         LOGLN("Finding features, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        LOG("Pairwise matching");
+        LOGLN("Pairwise matching");
         t = getTickCount();
         vector<MatchesInfo> pairwise_matches;
         matcher(features, pairwise_matches);
@@ -416,6 +425,7 @@ int main(int argc, char* argv[])
         // Test code
         if (frame_count == 1){
             LOGLN("match pairs:"<<pairwise_matches[1].matches.size());
+            LOGLN("match pairs:"<<pairwise_matches[1].matches[0].distance);
             LOGLN("matrix H:"<<pairwise_matches[1].H);
             drawMatches(images[0], features[0].keypoints, images[1], features[1].keypoints, pairwise_matches[1].matches, test_out);
             imwrite("matchpoints.png", test_out); 
@@ -462,17 +472,19 @@ int main(int argc, char* argv[])
             cameras[i].R = R;
         }
         
-        // Bundle adjustment
+        // Limit the ba iter times
         LOG("Bundle adjustment");
         t = getTickCount();
-        BundleAdjuster adjuster(ba_space, conf_thresh);
+        BundleAdjuster adjuster(ba_space, conf_thresh, ba_limit);
         adjuster(features, pairwise_matches, cameras);
         LOGLN("Bundle adjustment, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         
         // Find median focal length
         vector<double> focals;
         focals.clear();
-    #pragma omp parallel for
+        
+        //FIXME: parallel here may produces SEGFAULT
+        //#pragma omp parallel for
         for (size_t i = 0; i < cameras.size(); ++i)
         {
             LOGLN("Camera #" << indices[i]+1 << " focal length: " << cameras[i].focal);

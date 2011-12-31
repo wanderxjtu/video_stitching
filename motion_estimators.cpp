@@ -177,6 +177,7 @@ void BundleAdjuster::estimate(const vector<ImageFeatures> &features, const vecto
     int count = 0;
     for(;;)
     {
+        if (err_limit_ && count > err_limit_) break;
         const CvMat* _param = 0;
         CvMat* _J = 0;
         CvMat* _err = 0;
