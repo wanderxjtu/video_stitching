@@ -637,7 +637,7 @@ int main(int argc, char* argv[])
             return 0;
             break;
         } 
-    }while(frame_count <= 50);
+    }while(true);
     
     finder->releaseMemory();
     matcher.releaseMemory();

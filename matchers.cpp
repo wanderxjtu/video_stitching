@@ -362,19 +362,33 @@ namespace
     {
         CV_Assert(features1.descriptors.type() == features2.descriptors.type());
         CV_Assert(features2.descriptors.depth() == CV_8U || features2.descriptors.depth() == CV_32F);
-        matches_info.matches.clear();
         
+        matches_info.matches.clear();
+
+//        /*
+        Ptr<flann::IndexParams> indexParams = new flann::KDTreeIndexParams();
+        Ptr<flann::SearchParams> searchParams = new flann::SearchParams();
+        if (features2.descriptors.depth() == CV_8U)
+        {   
+            indexParams->setAlgorithm(cvflann::FLANN_INDEX_LSH);
+            searchParams->setAlgorithm(cvflann::FLANN_INDEX_LSH);
+        }   
+
+        Ptr<FlannBasedMatcher> matcher = new FlannBasedMatcher(indexParams, searchParams);
+ //       */
+        /*
         Ptr<DescriptorMatcher> matcher;
         if (features2.descriptors.depth() == CV_8U){
+            // need to update FLANN to support Hamming distance.
             matcher= new BruteForceMatcher<Hamming>;
         }else{
             Ptr<flann::IndexParams> indexParams = new flann::KDTreeIndexParams();
             Ptr<flann::SearchParams> searchParams = new flann::SearchParams();
             matcher= new FlannBasedMatcher(indexParams, searchParams);
         }
-        vector< vector<DMatch> > pair_matches;        
+        */
+        vector< vector<DMatch> > pair_matches;
         MatchesSet matches;
-
         // Find 1->2 matches
         matcher->knnMatch(features1.descriptors, features2.descriptors, pair_matches,2);
         for (size_t i = 0; i < pair_matches.size(); ++i)
@@ -407,6 +421,7 @@ namespace
        
     void GpuMatcher::match(const ImageFeatures &features1, const ImageFeatures &features2, MatchesInfo& matches_info)
     {
+        /* FIXME: not capable with opencv-svn
         matches_info.matches.clear(); 
 
         ensureSizeIsEnough(features1.descriptors.size(), features1.descriptors.type(), descriptors1_);
@@ -456,6 +471,7 @@ namespace
                 if (matches.find(make_pair(m0.trainIdx, m0.queryIdx)) == matches.end())
                     matches_info.matches.push_back(DMatch(m0.trainIdx, m0.queryIdx, m0.distance));
         }
+        */
     }
 
     void GpuMatcher::releaseMemory() { descriptors1_.release();
