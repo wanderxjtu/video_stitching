@@ -330,8 +330,8 @@ int main(int argc, char* argv[])
         return -1;
     }
     
-    double work_scale = 1, seam_scale = 1, compose_scale = 1;
-    bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
+    double work_scale = 1, seam_scale = 1;//, compose_scale = 1;
+    //bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
 
     // Check & open video devices
     vector<VideoCapture> video(num_images);
@@ -355,10 +355,9 @@ int main(int argc, char* argv[])
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
     
     int frame_count=0;
-    int64 t, real_start_time, frame_start_time;
+    int64 t, frame_start_time;
     int64 frame_time=0; 
     int64 frame_totaltime=0;
-    real_start_time=getTickCount();
     
     Ptr<FeaturesFinder> finder;
     if (feature_type == "surf") {
@@ -594,7 +593,6 @@ int main(int argc, char* argv[])
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
         {
             LOGLN("Compositing image #" << indices[img_idx]+1);
-            Size img_size = images[img_idx].size();                
             /*
             // Compensate exposure
             compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
