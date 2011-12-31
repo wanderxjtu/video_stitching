@@ -511,6 +511,7 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
     // Construct point-point correspondences for homography estimation
     Mat src_points(1, static_cast<int>(matches_info.matches.size()), CV_32FC2);
     Mat dst_points(1, static_cast<int>(matches_info.matches.size()), CV_32FC2);
+  #pragma omp parallel for
     for (size_t i = 0; i < matches_info.matches.size(); ++i)
     {
         const DMatch& m = matches_info.matches[i];
@@ -533,6 +534,7 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
 
     // Find number of inliers
     matches_info.num_inliers = 0;
+  #pragma omp parallel for
     for (size_t i = 0; i < matches_info.inliers_mask.size(); ++i)
         if (matches_info.inliers_mask[i])
             matches_info.num_inliers++;
