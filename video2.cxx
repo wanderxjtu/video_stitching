@@ -72,6 +72,11 @@ void printUsage()
         "  --try_gpu (yes|no)\n"
         "      Try to use GPU. The default value is 'no'. All default values\n"
         "      are for CPU mode.\n"
+        "\nFeature Calculation:\n"
+        "  --method (surf|orb)\n"
+        "      Feature type(algorithm) use to find homography."
+        "  --skip <int>\n"
+        "      Updating rate\n"
         "\nMotion Estimation Flags:\n"
         "  --work_megapix <float>\n"
         "      Resolution for image registration step. The default is 0.6 Mpx.\n"
@@ -119,7 +124,7 @@ double seam_megapix = 0.1;
 double compose_megapix = -1;
 //int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 int ba_space = BundleAdjuster::RAY_SPACE;
-int ba_limit = 150;
+int ba_limit = 300;
 float conf_thresh = 1.f;
 bool wave_correct = true;
 int warp_type = Warper::PLANE;
@@ -129,6 +134,8 @@ int seam_find_type = SeamFinder::VORONOI;
 int blend_type = Blender::MULTI_BAND;
 float blend_strength = 5;
 string result_name = "result.png";
+
+int skip = 20;
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -165,9 +172,14 @@ int parseCmdArgs(int argc, char** argv)
         {
             if (string(argv[i+1]) == "surf" || string(argv[i+1]) == "orb"){
                 feature_type = string(argv[i+1]);
+                skip = feature_type=="surf"?20:5;
             }else{
                 cout << "Bad --method flag value, will use "<<feature_type<<"\n";
             }
+            i++;
+        }
+        else if (string(argv[i]) == "--skip"){
+            skip = atoi(argv[i+1]) > 0 ? atoi(argv[i+1]) : skip;
             i++;
         }
         else if (string(argv[i]) == "--work_megapix") 
@@ -385,6 +397,7 @@ int main(int argc, char* argv[])
         vector<ImageFeatures> features(num_images);
         vector<Mat> images(num_images);
         
+        static vector<CameraParams> cameras;
     #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
         {
@@ -400,10 +413,12 @@ int main(int argc, char* argv[])
                 exit(-1);
             }
             resize(fullimg, fimg, Size(), work_scale, work_scale);
-            (*finder)(fimg, features[i]);
-            
-            features[i].img_idx = i;
-            LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
+            if(cameras.empty() || (frame_count-1) % skip == 0) {
+                (*finder)(fimg, features[i]);
+                
+                features[i].img_idx = i;
+                LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
+            }
 
             if (seam_scale!=work_scale)
                 resize(fullimg, fimg, Size(), seam_scale, seam_scale);
@@ -418,7 +433,9 @@ int main(int argc, char* argv[])
         LOGLN("Pairwise matching");
         t = getTickCount();
         vector<MatchesInfo> pairwise_matches;
-        matcher(features, pairwise_matches);
+        if(cameras.empty() || (frame_count-1) % skip == 0) {
+            matcher(features, pairwise_matches);
+        }
         LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         
 #ifdef DEBUG
@@ -434,65 +451,77 @@ int main(int argc, char* argv[])
 #endif
         // Check if images are sure from the same panorama
         vector<int> indices;
-        indices.clear();
-        indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
+        //indices.clear();
+        if(cameras.empty() || (frame_count-1) % skip == 0) {
+            indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
+        } else {
+            for (int i=0; i< num_images; ++i) indices.push_back(i);
+        }
+        static float warped_image_scale;
         if (indices.size() != num_images) {
-            LOGLN("Image match failed");
-            continue;
-        }
-/*
- * Only useful when more than 2 cams out there.
- * 
-        vector<Mat> img_subset;
-        for (size_t i = 0; i < indices.size(); ++i)
-        {
-            img_subset.push_back(images[indices[i]]);
-        }
-        images = img_subset;
-        // Check if we still have enough images
-        num_images = static_cast<int>(images.size());
-        if (num_images < 2)
-        {
-            LOGLN("Need more images");
-            continue;
-        }
- */
-        LOGLN("Estimating rotations...");
-        t = getTickCount();
-        HomographyBasedEstimator estimator;
-        vector<CameraParams> cameras;
-        estimator(features, pairwise_matches, cameras);
-        LOGLN("Estimating rotations, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
+            WARNING("Frame "<< frame_count << " match failed");
+            if (cameras.empty()) 
+            {
+                continue;
+            } 
+            WARNING("Use old Cameras.");
+        } else if(cameras.empty() || (frame_count-1) % skip == 0) {
+    /*
+    * Only useful when more than 2 cams out there.
+    * 
+            vector<Mat> img_subset;
+            for (size_t i = 0; i < indices.size(); ++i)
+            {
+                img_subset.push_back(images[indices[i]]);
+            }
+            images = img_subset;
+            // Check if we still have enough images
+            num_images = static_cast<int>(images.size());
+            if (num_images < 2)
+            {
+                LOGLN("Need more images");
+                continue;
+            }
+    */
+            cameras.clear();
+            LOGLN("Estimating rotations...");
+            t = getTickCount();
+            HomographyBasedEstimator estimator;
+            estimator(features, pairwise_matches, cameras);
+            LOGLN("Estimating rotations, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
-    #pragma omp parallel for
-        for (size_t i = 0; i < cameras.size(); ++i)
-        {
-            Mat R;
-            cameras[i].R.convertTo(R, CV_32F);
-            cameras[i].R = R;
+        #pragma omp parallel for
+            for (size_t i = 0; i < cameras.size(); ++i)
+            {
+                Mat R;
+                cameras[i].R.convertTo(R, CV_32F);
+                cameras[i].R = R;
+            }
+            
+            // Limit the ba iter times
+            LOG("Bundle adjustment");
+            t = getTickCount();
+            BundleAdjuster adjuster(ba_space, conf_thresh, ba_limit);
+            adjuster(features, pairwise_matches, cameras);
+            //oldCameras = cameras;
+            
+            LOGLN("Bundle adjustment, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
+            // Find median focal length
+            vector<double> focals;
+            //focals.clear();
+            
+            //FIXME: parallel here may produces SEGFAULT
+            #pragma omp parallel for shared(focals)
+            for (size_t i = 0; i < cameras.size(); ++i)
+            {
+                LOGLN("Camera #" << indices[i]+1 << " focal length: " << cameras[i].focal);
+                focals.push_back(cameras[i].focal);
+            }
+            nth_element(focals.begin(), focals.begin() + focals.size()/2, focals.end());
+            warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
+            LOGLN("warp image scale:"<<warped_image_scale);
         }
         
-        // Limit the ba iter times
-        LOG("Bundle adjustment");
-        t = getTickCount();
-        BundleAdjuster adjuster(ba_space, conf_thresh, ba_limit);
-        adjuster(features, pairwise_matches, cameras);
-        LOGLN("Bundle adjustment, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        
-        // Find median focal length
-        vector<double> focals;
-        focals.clear();
-        
-        //FIXME: parallel here may produces SEGFAULT
-        //#pragma omp parallel for
-        for (size_t i = 0; i < cameras.size(); ++i)
-        {
-            LOGLN("Camera #" << indices[i]+1 << " focal length: " << cameras[i].focal);
-            focals.push_back(cameras[i].focal);
-        }
-        nth_element(focals.begin(), focals.begin() + focals.size()/2, focals.end());
-        float warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
-        LOGLN("warp image scale:"<<warped_image_scale);
         /*
         if (wave_correct)
         {
@@ -557,8 +586,8 @@ int main(int argc, char* argv[])
         LOGLN("Finding seams, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
 
         // Release unused memory
-        images_warped_f.clear();
-        masks.clear();
+        //images_warped_f.clear();
+        //masks.clear();
 
         LOGLN("Compositing...");
         t = getTickCount();
@@ -634,15 +663,17 @@ int main(int argc, char* argv[])
         
         char key=waitKey(10);
         if (key=='q' || key==27) {
-            return 0;
             break;
-        } 
+        } else if (key=='s') {
+            imwrite(result_name, result);
+        }
     }while(true);
     
     finder->releaseMemory();
     matcher.releaseMemory();
     
     WARNING("Frame average time: "<< frame_totaltime/ getTickFrequency() / frame_count);
+    WARNING("FPS: "<< static_cast<float>(frame_count) / (frame_totaltime / getTickFrequency()));
     WARNING("Program total running time: " << ((getTickCount() - app_start_time) / getTickFrequency()) << " sec");
     exit(0);
 }
