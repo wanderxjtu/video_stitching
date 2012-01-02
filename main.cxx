@@ -105,7 +105,6 @@ void printUsage()
         "      The default is 'result.png'.\n";
 }
 
-
 // Default command line args
 vector<string> img_names;
 bool preview = false;
@@ -117,8 +116,7 @@ double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
-int warp_type = Warper::PLANE;
-// int warp_type = Warper::SPHERICAL;
+int warp_type = Warper::SPHERICAL;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::GC_COLOR;
@@ -304,7 +302,6 @@ int parseCmdArgs(int argc, char** argv)
     return 0;
 }
 
-
 int main(int argc, char* argv[])
 {
     int64 app_start_time = getTickCount();
@@ -474,10 +471,6 @@ int main(int argc, char* argv[])
     vector<Size> sizes(num_images);
     vector<Mat> masks(num_images);
 
-#pragma omp parallel for
-    for (int i = 0; i < num_images; ++i)
-    {
-    }
 
     vector<Mat> images_warped_f(num_images);
 #pragma omp parallel for
@@ -521,16 +514,58 @@ int main(int argc, char* argv[])
     t = getTickCount();
 
     Ptr<Blender> blender;
-    double compose_seam_aspect = 1;
+    //double compose_seam_aspect = 1;
     double compose_work_aspect = 1;
 
 
+    // Update corners and sizes
+    #pragma omp parallel for
+    for (int i = 0; i < num_images; ++i)
+    {
+        Ptr<Warper> warper = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
+        // Update camera focal
+        cameras[i].focal *= compose_work_aspect;
+
+        // Update corner and size
+        Size sz = full_img_sizes[i];
+        if (abs(compose_scale - 1) > 1e-1)
+        {
+            sz.width = cvRound(full_img_sizes[i].width * compose_scale);
+            sz.height = cvRound(full_img_sizes[i].height * compose_scale);
+        }
+        Rect roi = warper->warpRoi(sz, static_cast<float>(cameras[i].focal), cameras[i].R);
+        corners[i] = roi.tl();
+        sizes[i] = roi.size();
+    }
+
+    if (blender.empty())
+    {            
+        blender = Blender::createDefault(blend_type, try_gpu);
+        Size dst_sz = resultRoi(corners, sizes).size();
+        float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
+        if (blend_width < 1.f)
+            blender = Blender::createDefault(Blender::NO, try_gpu);
+        else if (blend_type == Blender::MULTI_BAND)
+        {
+            MultiBandBlender* mb = dynamic_cast<MultiBandBlender*>(static_cast<Blender*>(blender));
+            mb->setNumBands(static_cast<int>(ceil(log(blend_width)/log(2.)) - 1.));
+            LOGLN("Multi-band blender, number of bands: " << mb->numBands());
+        }
+        else if (blend_type == Blender::FEATHER)
+        {
+            FeatherBlender* fb = dynamic_cast<FeatherBlender*>(static_cast<Blender*>(blender));
+            fb->setSharpness(1.f/blend_width);
+            LOGLN("Feather blender, number of bands: " << fb->sharpness());
+        }
+        blender->prepare(corners, sizes);
+    }
+    
+    #pragma omp parallel for
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
         Mat full_img, img;
         Mat img_warped, img_warped_s;
         Mat dilated_mask, seam_mask, mask, mask_warped;
-        Ptr<Warper> warper2 = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
         LOGLN("Compositing image #" << indices[img_idx]+1);
 
         // Read image and resize it if necessary
@@ -542,29 +577,12 @@ int main(int argc, char* argv[])
             is_compose_scale_set = true;
 
             // Compute relative scales
-            compose_seam_aspect = compose_scale / seam_scale;
+            //compose_seam_aspect = compose_scale / seam_scale;
             compose_work_aspect = compose_scale / work_scale;
             // Update warped image scale
             warped_image_scale *= static_cast<float>(compose_work_aspect);
-            warper2 = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
+            //warper2 = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
 
-            // Update corners and sizes
-            for (int i = 0; i < num_images; ++i)
-            {
-                // Update camera focal
-                cameras[i].focal *= compose_work_aspect;
-
-                // Update corner and size
-                Size sz = full_img_sizes[i];
-                if (abs(compose_scale - 1) > 1e-1)
-                {
-                    sz.width = cvRound(full_img_sizes[i].width * compose_scale);
-                    sz.height = cvRound(full_img_sizes[i].height * compose_scale);
-                }
-                Rect roi = warper2->warpRoi(sz, static_cast<float>(cameras[i].focal), cameras[i].R);
-                corners[i] = roi.tl();
-                sizes[i] = roi.size();
-            }
         }
         if (abs(compose_scale - 1) > 1e-1)
             resize(full_img, img, Size(), compose_scale, compose_scale);
@@ -574,13 +592,15 @@ int main(int argc, char* argv[])
         Size img_size = img.size();                
 
         // Warp the current image
-        warper2->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
+        Ptr<Warper> warper = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
+        warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
                      img_warped);
 
+        imwrite(img_idx+"img_warped.png",img_warped);
         // Warp the current image mask
         mask.create(img_size, CV_8U);
         mask.setTo(Scalar::all(255));    
-        warper2->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
+        warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
                      INTER_NEAREST, BORDER_CONSTANT);
 
         // Compensate exposure
@@ -594,28 +614,6 @@ int main(int argc, char* argv[])
         dilate(masks_warped[img_idx], dilated_mask, Mat());
         resize(dilated_mask, seam_mask, mask_warped.size());
         mask_warped = seam_mask & mask_warped;
-
-        if (blender.empty())
-        {            
-            blender = Blender::createDefault(blend_type, try_gpu);
-            Size dst_sz = resultRoi(corners, sizes).size();
-            float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
-            if (blend_width < 1.f)
-                blender = Blender::createDefault(Blender::NO, try_gpu);
-            else if (blend_type == Blender::MULTI_BAND)
-            {
-                MultiBandBlender* mb = dynamic_cast<MultiBandBlender*>(static_cast<Blender*>(blender));
-                mb->setNumBands(static_cast<int>(ceil(log(blend_width)/log(2.)) - 1.));
-                LOGLN("Multi-band blender, number of bands: " << mb->numBands());
-            }
-            else if (blend_type == Blender::FEATHER)
-            {
-                FeatherBlender* fb = dynamic_cast<FeatherBlender*>(static_cast<Blender*>(blender));
-                fb->setSharpness(1.f/blend_width);
-                LOGLN("Feather blender, number of bands: " << fb->sharpness());
-            }
-            blender->prepare(corners, sizes);
-        }
 
         // Blend the current image
         blender->feed(img_warped_s, mask_warped, corners[img_idx]);        

@@ -66,9 +66,6 @@ void printUsage()
         "Rotation model images stitcher.\n\n"
         "video_stitching dev#1 dev#2 [...dev#N] [flags]\n\n" 
         "Flags:\n"
-        "  --preview\n"
-        "      Run stitching in the preview mode. Works faster than usual mode,\n"
-        "      but output image will have lower resolution.\n"
         "  --try_gpu (yes|no)\n"
         "      Try to use GPU. The default value is 'no'. All default values\n"
         "      are for CPU mode.\n"
@@ -78,8 +75,6 @@ void printUsage()
         "  --skip <int>\n"
         "      Updating rate\n"
         "\nMotion Estimation Flags:\n"
-        "  --work_megapix <float>\n"
-        "      Resolution for image registration step. The default is 0.6 Mpx.\n"
         "  --match_conf <float>\n"
         "      Confidence for feature matching step. The default is 0.65.\n"
         "  --conf_thresh <float>\n"
@@ -94,35 +89,23 @@ void printUsage()
         "\nCompositing Flags:\n"
         "  --warp (plane|cylindrical|spherical)\n" 
         "      Warp surface type. The default is 'spherical'.\n"
-        "  --seam_megapix <float>\n"
-        "      Resolution for seam estimation step. The default is 0.1 Mpx.\n"
         "  --seam (no|voronoi|gc_color|gc_colorgrad)\n" 
         "      Seam estimation method. The default is 'gc_color'.\n"
-        "  --compose_megapix <float>\n"
-        "      Resolution for compositing step. Use -1 for original resolution.\n"
-        "      The default is -1.\n"
         "  --expos_comp (no|gain|gain_blocks)\n"
         "      Exposure compensation method. The default is 'gain_blocks'.\n"
         "  --blend (no|feather|multiband)\n"
         "      Blending method. The default is 'multiband'.\n"
         "  --blend_strength <float>\n"
         "      Blending strength from [0,100] range. The default is 5.\n"
-/*        "  --output <result_img>\n"
-        "      The default is 'result.png'.\n"
-        "\nVideo Stitching:\n"
-        "  --video <video_devs>\n"*/;
+        "  --result <string>\n"
+        "      Filename use to save the final result. The default is result.png.\n";
 }
-
 
 // Default command line args
 vector<string> img_names;
-bool preview = false;
 bool try_gpu = false;
 string feature_type = "surf";
-double work_megapix = 0.6;
-double seam_megapix = 0.1;
-double compose_megapix = -1;
-//int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
+int skip = -1;
 int ba_space = BundleAdjuster::RAY_SPACE;
 int ba_limit = 300;
 float conf_thresh = 1.f;
@@ -134,8 +117,6 @@ int seam_find_type = SeamFinder::VORONOI;
 int blend_type = Blender::MULTI_BAND;
 float blend_strength = 5;
 string result_name = "result.png";
-
-int skip = 20;
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -151,10 +132,6 @@ int parseCmdArgs(int argc, char** argv)
             printUsage();
             return -1;
         }
-        else if (string(argv[i]) == "--preview")
-        {
-            preview = true;
-        }
         else if (string(argv[i]) == "--try_gpu")
         {
             if (string(argv[i + 1]) == "no")
@@ -168,34 +145,25 @@ int parseCmdArgs(int argc, char** argv)
             }
             i++;
         }
-        else if (string(argv[i]) == "--method")
+        else if (string(argv[i]) == "--method" || string(argv[i]) == "-m")
         {
             if (string(argv[i+1]) == "surf" || string(argv[i+1]) == "orb"){
                 feature_type = string(argv[i+1]);
-                skip = feature_type=="surf"?20:5;
             }else{
                 cout << "Bad --method flag value, will use "<<feature_type<<"\n";
             }
             i++;
         }
-        else if (string(argv[i]) == "--skip"){
-            skip = atoi(argv[i+1]) > 0 ? atoi(argv[i+1]) : skip;
+        else if (string(argv[i]) == "-o" || string(argv[i]) == "-s")
+        {
+            if (string(argv[i]) == "-o") 
+                feature_type = "orb";
+            else
+                feature_type = "surf";
+        }
+        else if (string(argv[i]) == "--skip" || string(argv[i]) == "-k" ){
+            skip = atoi(argv[i+1]);
             i++;
-        }
-        else if (string(argv[i]) == "--work_megapix") 
-        {
-            work_megapix = atof(argv[i + 1]);
-            i++; 
-        }
-        else if (string(argv[i]) == "--seam_megapix") 
-        {
-            seam_megapix = atof(argv[i + 1]);
-            i++; 
-        }
-        else if (string(argv[i]) == "--compose_megapix") 
-        {
-            compose_megapix = atof(argv[i + 1]);
-            i++; 
         }
         else if (string(argv[i]) == "--result")
         {
@@ -318,12 +286,9 @@ int parseCmdArgs(int argc, char** argv)
         else
             img_names.push_back(argv[i]);
     }
-    if (preview)
-    {
-        compose_megapix = 0.6;
-    }
     return 0;
 }
+
 
 
 int main(int argc, char* argv[])
@@ -334,6 +299,9 @@ int main(int argc, char* argv[])
     int retval = parseCmdArgs(argc, argv);
     if (retval)
         return retval;
+    
+    // Check some default value;
+    if (skip<=0) skip = feature_type == "surf"? 20:5; // ensure we don't get errer
 
     // Check if have enough images
     int num_images = static_cast<int>(img_names.size());
@@ -388,11 +356,11 @@ int main(int argc, char* argv[])
         frame_start_time = t;
         double seam_work_aspect = 1;
     
-        LOGLN("Finding features...");
         
         // !! So the frame number (frame_count) start from 1 !!
         ++ frame_count;
         LOGLN("Round "<< frame_count);
+        LOGLN("Finding features...");
         
         vector<ImageFeatures> features(num_images);
         vector<Mat> images(num_images);
@@ -412,10 +380,10 @@ int main(int argc, char* argv[])
                 LOGLN("Can't open image " << img_names[i]);
                 exit(-1);
             }
+            
             resize(fullimg, fimg, Size(), work_scale, work_scale);
             if(cameras.empty() || (frame_count-1) % skip == 0) {
                 (*finder)(fimg, features[i]);
-                
                 features[i].img_idx = i;
                 LOGLN("Features in image #" << i+1 << ": " << features[i].keypoints.size());
             }
@@ -435,6 +403,7 @@ int main(int argc, char* argv[])
         vector<MatchesInfo> pairwise_matches;
         if(cameras.empty() || (frame_count-1) % skip == 0) {
             matcher(features, pairwise_matches);
+            if (pairwise_matches.empty()) continue;
         }
         LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         
@@ -442,7 +411,6 @@ int main(int argc, char* argv[])
         // Test code
         if (frame_count == 1){
             LOGLN("match pairs:"<<pairwise_matches[1].matches.size());
-            LOGLN("match pairs:"<<pairwise_matches[1].matches[0].distance);
             LOGLN("matrix H:"<<pairwise_matches[1].H);
             drawMatches(images[0], features[0].keypoints, images[1], features[1].keypoints, pairwise_matches[1].matches, test_out);
             imwrite("matchpoints.png", test_out); 
@@ -661,7 +629,7 @@ int main(int argc, char* argv[])
         result.convertTo(result_show, CV_8U);
         imshow("video_stitching", result_show);
         
-        char key=waitKey(10);
+        char key=waitKey(5);
         if (key=='q' || key==27) {
             break;
         } else if (key=='s') {

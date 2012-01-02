@@ -187,11 +187,12 @@ void OrbFeaturesFinder::find(const Mat &image, ImageFeatures &features)
     Mat gray_image;
     CV_Assert(image.type() == CV_8UC3);
     cvtColor(image, gray_image, CV_BGR2GRAY);
-
-    if (grid_size.area() == 1)
-        (*orb)(gray_image, Mat(), features.keypoints, features.descriptors);
-    else
-    {
+    LOGLN("Image dim:"<<gray_image.dims)
+    LOGLN("Image descp dim:"<<features.descriptors.dims)
+    if (grid_size.area() == 1){
+        orb->operator()(gray_image, Mat(), features.keypoints, features.descriptors);
+//        (*orb)(gray_image, Mat(), features.keypoints, features.descriptors);
+    } else {
         features.keypoints.clear();
         features.descriptors.release();
 
@@ -206,10 +207,7 @@ void OrbFeaturesFinder::find(const Mat &image, ImageFeatures &features)
                 int xr = (c+1) * gray_image.cols / grid_size.width-1;
                 int yr = (r+1) * gray_image.rows / grid_size.height-1;
 
-                LOGLN(xl<<" "<<xr<<" "<<yl<<" "<<yr);
-                LOGLN(gray_image.cols<<" "<<gray_image.rows);
                 (*orb)(gray_image(Range(yl,yr),Range(xl,xr)), Mat(), points, descriptors);
-                LOGLN("isHere?");
 
                 features.keypoints.reserve(features.keypoints.size() + points.size());
                 for (std::vector<KeyPoint>::iterator kp = points.begin(); kp != points.end(); ++kp)
@@ -360,10 +358,13 @@ namespace
 
     void CpuMatcher::match(const ImageFeatures &features1, const ImageFeatures &features2, MatchesInfo& matches_info)
     {
-        CV_Assert(features1.descriptors.type() == features2.descriptors.type());
         CV_Assert(features2.descriptors.depth() == CV_8U || features2.descriptors.depth() == CV_32F);
+        // this assert may happen when one cam is too dark, so comment it out.
+        //CV_Assert(features1.descriptors.type() == features2.descriptors.type());
         
         matches_info.matches.clear();
+        if (features1.descriptors.type() != features2.descriptors.type()) return;
+        if (features1.descriptors.empty() != features2.descriptors.empty()) return;
 
 //        /*
         Ptr<flann::IndexParams> indexParams = new flann::KDTreeIndexParams();
