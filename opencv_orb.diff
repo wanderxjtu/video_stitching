@@ -1,0 +1,16 @@
+Index: modules/features2d/src/orb.cpp
+===================================================================
+--- modules/features2d/src/orb.cpp	(版本 7111)
++++ modules/features2d/src/orb.cpp	(工作副本)
+@@ -878,9 +878,9 @@
+         int nkeypoints = 0;
+         for (int level = 0; level < n_levels; ++level)
+             nkeypoints += (int)all_keypoints[level].size();
+-        if( nkeypoints == 0 )
++        /*if( nkeypoints == 0 )
+             descriptors.release();
+-        else
++        else*/
+             descriptors.create(nkeypoints, descriptorSize(), CV_8U);
+     }
+     
