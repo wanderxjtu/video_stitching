@@ -97,7 +97,7 @@ void printUsage()
         "      Blending method. The default is 'multiband'.\n"
         "  --blend_strength <float>\n"
         "      Blending strength from [0,100] range. The default is 5.\n"
-        "  --result <string>\n"
+        "  --save_video <string>\n"
         "      Filename use to save the final result. The default is result.png.\n";
 }
 
@@ -116,7 +116,9 @@ float match_conf = 0.65f;
 int seam_find_type = SeamFinder::VORONOI;
 int blend_type = Blender::MULTI_BAND;
 float blend_strength = 5;
-string result_name = "result.png";
+bool save_video = false;
+string result_name =  "result.png";
+string result_video = "stitch.mpg";
 
 int parseCmdArgs(int argc, char** argv)
 {
@@ -278,10 +280,9 @@ int parseCmdArgs(int argc, char** argv)
             blend_strength = static_cast<float>(atof(argv[i + 1]));
             i++;
         }
-        else if (string(argv[i]) == "--output")
+        else if (string(argv[i]) == "--save_video" || string(argv[i]) == "-v")
         {
-            result_name = argv[i + 1];
-            i++;
+            save_video = true;
         }
         else
             img_names.push_back(argv[i]);
@@ -334,6 +335,7 @@ int main(int argc, char* argv[])
       
     // Create a window to show the result (maybe a video)
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
+    VideoWriter writer;
     
     int frame_count=0;
     int64 t, frame_start_time;
@@ -351,14 +353,13 @@ int main(int argc, char* argv[])
     BestOf2NearestMatcher matcher(try_gpu, match_conf);//, 4,2);
     
     // Main loop
-    do{
+    for(frame_count=1;frame_count >0;++frame_count)
+    {
         t = getTickCount();
         frame_start_time = t;
         double seam_work_aspect = 1;
-    
         
         // !! So the frame number (frame_count) start from 1 !!
-        ++ frame_count;
         LOGLN("Round "<< frame_count);
         LOGLN("Finding features...");
         
@@ -624,18 +625,24 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
         imwrite(result_name, result);
 #endif
+          
         namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);
         Mat result_show;
         result.convertTo(result_show, CV_8U);
         imshow("video_stitching", result_show);
+        if (save_video){
+            if(!writer.isOpened()) writer.open(result_video, CV_FOURCC('P','I','M','1'), 20, result_show.size(), true);
+            WARNING("!!save to video!!");
+            writer<<result_show;
+        }
         
         char key=waitKey(5);
         if (key=='q' || key==27) {
             break;
-        } else if (key=='s') {
+        } /*else if (key=='s') {
             imwrite(result_name, result);
-        }
-    }while(true);
+        }*/
+    }
     
     finder->releaseMemory();
     matcher.releaseMemory();
