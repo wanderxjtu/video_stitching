@@ -319,8 +319,7 @@ int main(int argc, char* argv[])
     vector<VideoCapture> video(num_images);
     LOGLN("Video devices initializing");
     LOGLN("OpenMP proc number:"<<omp_get_num_procs());
-    omp_set_num_threads(2);
-    
+    omp_set_num_threads(min(num_images,omp_get_num_procs()));
 #pragma omp parallel for
     for (int i = 0; i < num_images; ++i){
         Mat fullimg;
