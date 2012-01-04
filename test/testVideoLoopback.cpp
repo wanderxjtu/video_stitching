@@ -3,31 +3,13 @@
 #include "../precomp.hpp"
 
 #include <linux/videodev2.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <assert.h>
-#include <stropts.h>
+#include "v4l2lb.h"
 
 #define LOG(msg) { std::cout << msg <<endl; std::cout.flush(); }
 
 using namespace std;
 using namespace cv;
 
-#ifdef _cplusplus
-extern "C"{
-#endif
-#ifdef _cplusplus
-}
-#endif
-/*`
-*/
-#define vidioc(op, arg) \
-        if (ioctl(dev_fd, VIDIOC_##op, arg) == -1) \
-                cout<<(#op)<<endl; \
-        else
 
 int main(int argc, char* argv[])
 {
@@ -65,20 +47,11 @@ int main(int argc, char* argv[])
     Mat dImg(img.rows, img.cols*device_cnt, img.type());
 
     //////////////////////////////////////////////////////////////////////
-        string device="/dev/video3";
-        struct v4l2_format v;
-        int dev_fd = open(device.c_str(), O_RDWR);
-        if (dev_fd == -1) cout<<"fail to open device"<<device<<endl;
-        v.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        vidioc(G_FMT, &v);
-        v.fmt.pix.width = dImg.cols;
-        v.fmt.pix.height = dImg.rows;
-            //FIXME: what should we use in here?
-        v.fmt.pix.pixelformat = V4L2_COLORSPACE_JPEG;
-        v.fmt.pix.sizeimage = 3 * dImg.cols * dImg.rows / 2;
-        vidioc(S_FMT, &v);
-        int frame_size=3*dImg.cols*dImg.rows/2;
+    string device_name="/dev/video3";
+    int frame_size = 3*dImg.cols*dImg.rows/2;
+    int dev_fd = v4l2lb_open_device(const_cast<char*>(device_name.c_str()), dImg.cols, dImg.rows, frame_size);
     
+    cout<< "   "<<frame_size<<endl;
     //////////////////////////////////////////////////////////////////////
 	vector<Mat> roi(device_cnt);
 	for (int i = 0; i < device_cnt; ++i){
@@ -97,21 +70,22 @@ int main(int argc, char* argv[])
     CV_FOURCC('F', 'L', 'V', '1') = FLV1 codec
     */
     Mat vImg;
-    //VideoWriter writer("v.mpg", CV_FOURCC('P','I','M','1'), 30, dImg.size(), true);
+    VideoWriter writer("video.mpg", CV_FOURCC('M','P','G','1'), 24, dImg.size(), true);
     
 	while(true){
 		for (int i = 0; i < device_cnt; ++i){
 			capture[i]>>img;
 			img.copyTo(roi[i]);
             
-            //cvtColor(dImg,vImg,CV_RGB2YUV);
+            cvtColor(dImg,vImg,CV_RGB2YCrCb);
             vector<uchar> buf;
-            
             //FIXME: 
-            imencode(".jpg", dImg, buf);
+            imencode(".jpg", vImg, buf);
+            cout<< sizeof(vImg) <<endl;
+            cout<< buf.size()<<endl;
             
-            write(dev_fd,&buf[0],frame_size);
-            //if (writer.isOpened()) writer<<vImg;
+            //write(dev_fd,&buf[0],buf.size());
+            if (writer.isOpened()) writer<<vImg;
             
             imshow("video", dImg);
 			char key = waitKey(5);

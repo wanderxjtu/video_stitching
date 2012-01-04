@@ -336,6 +336,9 @@ int main(int argc, char* argv[])
     // Create a window to show the result (maybe a video)
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
     VideoWriter writer;
+    if (save_video){
+        WARNING("!!save to video!!");
+    }
     
     int frame_count=0;
     int64 t, frame_start_time;
@@ -618,22 +621,15 @@ int main(int argc, char* argv[])
         blender->blend(result, result_mask);
 
         LOGLN("Compositing, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        frame_time = getTickCount() - frame_start_time;
-        WARNING(">>>>>>>>>>>>>>FRAME "<< frame_count << " Finished, time: " << frame_time / getTickFrequency() << " sec");
-        frame_totaltime+=frame_time;
-
-#ifdef DEBUG
-        imwrite(result_name, result);
-#endif
-          
+        
         namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);
         Mat result_show;
         result.convertTo(result_show, CV_8U);
         imshow("video_stitching", result_show);
         if (save_video){
-            if(!writer.isOpened()) writer.open(result_video, CV_FOURCC('P','I','M','1'), 20, result_show.size(), true);
-            WARNING("!!save to video!!");
-            writer<<result_show;
+            if(!writer.isOpened()) writer.open(result_video, CV_FOURCC('P','I','M','1'), 24, result_show.size(), true);
+            for (int k=0;k<frame_time/(getTickFrequency()/24.f);++k)
+                writer<<result_show;
         }
         
         char key=waitKey(5);
@@ -642,6 +638,10 @@ int main(int argc, char* argv[])
         } /*else if (key=='s') {
             imwrite(result_name, result);
         }*/
+        
+        frame_time = getTickCount() - frame_start_time;
+        WARNING(">>>>>>>>>>>>>>FRAME "<< frame_count << " Finished, time: " << frame_time / getTickFrequency() << " sec");
+        frame_totaltime+=frame_time;
     }
     
     finder->releaseMemory();
@@ -649,6 +649,7 @@ int main(int argc, char* argv[])
     
     WARNING("Frame average time: "<< frame_totaltime/ getTickFrequency() / frame_count);
     WARNING("FPS: "<< static_cast<float>(frame_count) / (frame_totaltime / getTickFrequency()));
+    WARNING("Video length: "<< static_cast<float>(frame_totaltime) / getTickFrequency());
     WARNING("Program total running time: " << ((getTickCount() - app_start_time) / getTickFrequency()) << " sec");
     exit(0);
 }
