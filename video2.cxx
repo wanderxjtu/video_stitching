@@ -318,8 +318,7 @@ int main(int argc, char* argv[])
     // Check & open video devices
     vector<VideoCapture> video(num_images);
     LOGLN("Video devices initializing");
-    
-    cout<<omp_get_num_procs()<<endl;
+    omp_set_num_threads(min(num_images,omp_get_num_procs()));
 #pragma omp parallel for
     for (int i = 0; i < num_images; ++i){
         Mat fullimg;
