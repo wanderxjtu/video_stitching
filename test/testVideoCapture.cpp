@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 
 	vector<VideoCapture> capture(device_cnt);
 	for (int i = 0; i < device_cnt; ++i){
-		if(!capture[i].open(device_indices[i])) {
+		if(!capture[i].open(200+device_indices[i])) {
 		      LOG("Can't open device #"<<device_indices[i]);
 		      device_indices.erase(device_indices.begin()+i);
 		      capture.erase(capture.begin()+i);
@@ -47,7 +47,10 @@ int main(int argc, char* argv[])
 		roi[i]=dImg(Rect(img.cols*i,0,img.cols,img.rows));
 	}
 
-	while(true){
+    int64 t=getTickCount();
+    int frame_count=0;
+	while(++frame_count){
+        //int i = frame_count % device_cnt;
 		for (int i = 0; i < device_cnt; ++i){
 			capture[i]>>img;
 			img.copyTo(roi[i]);
@@ -61,11 +64,10 @@ int main(int argc, char* argv[])
 					break;
 				case 27:
 				case 'q':
-					return 0;
-					break;
+                    cout<<"FPS: "<<static_cast<float>(frame_count)/(getTickCount()-t)*getTickFrequency()<<endl;
+                    return 0;
 			}
 		}
-
 	}
 }
 

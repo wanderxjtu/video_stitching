@@ -41,11 +41,11 @@
 //M*/
 
 // We follow to these papers:
-// 1) Construction of panoramic mosaics with global and local alignment. 
+// 1) Construction of panoramic mosaics with global and local alignment.
 //    Heung-Yeung Shum and Richard Szeliski. 2000.
-// 2) Eliminating Ghosting and Exposure Artifacts in Image Mosaics. 
+// 2) Eliminating Ghosting and Exposure Artifacts in Image Mosaics.
 //    Matthew Uyttendaele, Ashley Eden and Richard Szeliski. 2001.
-// 3) Automatic Panoramic Image Stitching using Invariant Features. 
+// 3) Automatic Panoramic Image Stitching using Invariant Features.
 //    Matthew Brown and David G. Lowe. 2007.
 // 4) ORB
 
@@ -62,9 +62,9 @@ using namespace cv;
 
 void printUsage()
 {
-    cout << 
+    cout <<
         "Rotation model images stitcher.\n\n"
-        "video_stitching dev#1 dev#2 [...dev#N] [flags]\n\n" 
+        "video_stitching dev#1 dev#2 [...dev#N] [flags]\n\n"
         "Flags:\n"
         "  --try_gpu (yes|no)\n"
         "      Try to use GPU. The default value is 'no'. All default values\n"
@@ -87,9 +87,9 @@ void printUsage()
         "  --wave_correct (no|yes)\n"
         "      Perform wave effect correction. The default is 'yes'.\n"
         "\nCompositing Flags:\n"
-        "  --warp (plane|cylindrical|spherical)\n" 
+        "  --warp (plane|cylindrical|spherical)\n"
         "      Warp surface type. The default is 'spherical'.\n"
-        "  --seam (no|voronoi|gc_color|gc_colorgrad)\n" 
+        "  --seam (no|voronoi|gc_color|gc_colorgrad)\n"
         "      Seam estimation method. The default is 'gc_color'.\n"
         "  --expos_comp (no|gain|gain_blocks)\n"
         "      Exposure compensation method. The default is 'gain_blocks'.\n"
@@ -158,7 +158,7 @@ int parseCmdArgs(int argc, char** argv)
         }
         else if (string(argv[i]) == "-o" || string(argv[i]) == "-s")
         {
-            if (string(argv[i]) == "-o") 
+            if (string(argv[i]) == "-o")
                 feature_type = "orb";
             else
                 feature_type = "surf";
@@ -242,7 +242,7 @@ int parseCmdArgs(int argc, char** argv)
                 return -1;
             }
             i++;
-        }        
+        }
         else if (string(argv[i]) == "--seam")
         {
             if (string(argv[i + 1]) == "no")
@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
     int retval = parseCmdArgs(argc, argv);
     if (retval)
         return retval;
-    
+
     // Check some default value;
     if (skip<=0) skip = feature_type == "surf"? 20:5; // ensure we don't get errer
 
@@ -311,7 +311,8 @@ int main(int argc, char* argv[])
         LOGLN("Need more devices");
         return -1;
     }
-    
+
+    // TODO: try tune work_scale on high resolution images
     double work_scale = 1, seam_scale = 1;//, compose_scale = 1;
     //bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
 
@@ -328,23 +329,23 @@ int main(int argc, char* argv[])
             exit(1);
         }
         // Wait for about 2 sec to initializing the cameras
-        for (int j=50; j>0; --j) 
+        for (int j=50; j>0; --j)
             video[i]>>fullimg;
         fullimg.release();
     }
-      
+
     // Create a window to show the result (maybe a video)
     namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);Mat test_out;
     VideoWriter writer;
     if (save_video){
         WARNING("!!save to video!!");
     }
-    
+
     int frame_count=0;
     int64 t, frame_start_time;
-    int64 frame_time=0; 
+    int64 frame_time=0;
     int64 frame_totaltime=0;
-    
+
     Ptr<FeaturesFinder> finder;
     if (feature_type == "surf") {
         LOGLN("Using surf");
@@ -354,21 +355,21 @@ int main(int argc, char* argv[])
         finder = new OrbFeaturesFinder(Size(1,1));
     }
     BestOf2NearestMatcher matcher(try_gpu, match_conf);//, 4,2);
-    
+
     // Main loop
     for(frame_count=1;frame_count >0;++frame_count)
     {
         t = getTickCount();
         frame_start_time = t;
         double seam_work_aspect = 1;
-        
+
         // !! So the frame number (frame_count) start from 1 !!
         LOGLN("Round "<< frame_count);
         LOGLN("Finding features...");
-        
+
         vector<ImageFeatures> features(num_images);
         vector<Mat> images(num_images);
-        
+
         static vector<CameraParams> cameras;
     #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
@@ -384,7 +385,7 @@ int main(int argc, char* argv[])
                 LOGLN("Can't open image " << img_names[i]);
                 exit(-1);
             }
-            
+
             resize(fullimg, fimg, Size(), work_scale, work_scale);
             if(cameras.empty() || (frame_count-1) % skip == 0) {
                 (*finder)(fimg, features[i]);
@@ -395,11 +396,11 @@ int main(int argc, char* argv[])
             if (seam_scale!=work_scale)
                 resize(fullimg, fimg, Size(), seam_scale, seam_scale);
             images[i] = fimg.clone();
-            
+
             fimg.release();
             fullimg.release();
         }
-        // TODO:check the cameras sequences in first frame. 
+        // TODO:check the cameras sequences in first frame.
         // swap the devices will be good, but do we realy need that?.
         LOGLN("Finding features, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
         LOGLN("Pairwise matching");
@@ -410,14 +411,14 @@ int main(int argc, char* argv[])
             if (pairwise_matches.empty()) continue;
         }
         LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        
+
 #ifdef DEBUG
         // Test code
         if (frame_count == 1){
             LOGLN("match pairs:"<<pairwise_matches[1].matches.size());
             LOGLN("matrix H:"<<pairwise_matches[1].H);
             drawMatches(images[0], features[0].keypoints, images[1], features[1].keypoints, pairwise_matches[1].matches, test_out);
-            imwrite("matchpoints.png", test_out); 
+            imwrite("matchpoints.png", test_out);
             test_out.release();
         }
 #endif
@@ -432,15 +433,15 @@ int main(int argc, char* argv[])
         static float warped_image_scale;
         if (indices.size() != num_images) {
             WARNING("Frame "<< frame_count << " match failed");
-            if (cameras.empty()) 
+            if (cameras.empty())
             {
                 continue;
-            } 
+            }
             WARNING("Use old Cameras.");
         } else if(cameras.empty() || (frame_count-1) % skip == 0) {
     /*
     * Only useful when more than 2 cams out there.
-    * 
+    *
             vector<Mat> img_subset;
             for (size_t i = 0; i < indices.size(); ++i)
             {
@@ -469,19 +470,19 @@ int main(int argc, char* argv[])
                 cameras[i].R.convertTo(R, CV_32F);
                 cameras[i].R = R;
             }
-            
+
             // Limit the ba iter times
             LOG("Bundle adjustment");
             t = getTickCount();
             BundleAdjuster adjuster(ba_space, conf_thresh, ba_limit);
             adjuster(features, pairwise_matches, cameras);
             //oldCameras = cameras;
-            
+
             LOGLN("Bundle adjustment, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
             // Find median focal length
             vector<double> focals;
             //focals.clear();
-            
+
             //FIXME: parallel here may produces SEGFAULT
             #pragma omp parallel for shared(focals)
             for (size_t i = 0; i < cameras.size(); ++i)
@@ -493,7 +494,7 @@ int main(int argc, char* argv[])
             warped_image_scale = static_cast<float>(focals[focals.size() / 2]);
             LOGLN("warp image scale:"<<warped_image_scale);
         }
-        
+
         /*
         if (wave_correct)
         {
@@ -525,18 +526,18 @@ int main(int argc, char* argv[])
             masks[i].create(images[i].size(), CV_8U);
             masks[i].setTo(Scalar::all(255));
         }
-        
+
         // Warp images and their masks
         vector<Mat> images_warped_f(num_images);
     #pragma omp parallel for
         for (int i = 0; i < num_images; ++i)
         {
-            Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
+            Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect),
                                                             warp_type, try_gpu);
-            corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
+            corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect),
                                     cameras[i].R, images_warped[i], INTER_LINEAR, BORDER_CONSTANT);
             sizes[i] = images_warped[i].size();
-            warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
+            warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect),
                         cameras[i].R, masks_warped[i], INTER_LINEAR, BORDER_CONSTANT);
             images_warped[i].convertTo(images_warped_f[i], CV_32F);
         }
@@ -569,7 +570,7 @@ int main(int argc, char* argv[])
         //double compose_work_aspect = 1;
 
         if (blender.empty())
-        {            
+        {
             blender = Blender::createDefault(blend_type, try_gpu);
             Size dst_sz = resultRoi(corners, sizes).size();
             float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
@@ -589,7 +590,7 @@ int main(int argc, char* argv[])
             }
             blender->prepare(corners, sizes);
         }
-            
+
         // Here we start to compositing images
     #pragma omp parallel for
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
@@ -603,25 +604,25 @@ int main(int argc, char* argv[])
             Mat img_warped_s;
             images_warped[img_idx].convertTo(img_warped_s, CV_16S);
             images_warped[img_idx].release();
-            
+
             Mat dilated_mask, seam_mask, mask_warped;
             dilate(masks_warped[img_idx], dilated_mask, Mat());
             resize(dilated_mask, seam_mask, masks_warped[img_idx].size());
             mask_warped = seam_mask & masks_warped[img_idx];
 
 #ifdef DEBUG
-            stringstream imgname; 
+            stringstream imgname;
             imgname<<"imgwarp_s"<<img_idx<<".png"; imwrite(imgname.str(), img_warped_s);imgname.str("");;
 #endif
             // Blend the current image
-            blender->feed(img_warped_s, mask_warped, corners[img_idx]);        
+            blender->feed(img_warped_s, mask_warped, corners[img_idx]);
         }
-    
+
         Mat result, result_mask;
         blender->blend(result, result_mask);
 
         LOGLN("Compositing, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
-        
+
         namedWindow("video_stitching", CV_WINDOW_AUTOSIZE);
         Mat result_show;
         result.convertTo(result_show, CV_8U);
@@ -631,22 +632,22 @@ int main(int argc, char* argv[])
             for (int k=0;k<frame_time/(getTickFrequency()/24.f);++k)
                 writer<<result_show;
         }
-        
+
         char key=waitKey(5);
         if (key=='q' || key==27) {
             break;
         } /*else if (key=='s') {
             imwrite(result_name, result);
         }*/
-        
+
         frame_time = getTickCount() - frame_start_time;
         WARNING(">>>>>>>>>>>>>>FRAME "<< frame_count << " Finished, time: " << frame_time / getTickFrequency() << " sec");
         frame_totaltime+=frame_time;
     }
-    
+
     finder->releaseMemory();
     matcher.releaseMemory();
-    
+
     WARNING("Frame average time: "<< frame_totaltime/ getTickFrequency() / frame_count);
     WARNING("FPS: "<< static_cast<float>(frame_count) / (frame_totaltime / getTickFrequency()));
     WARNING("Video length: "<< static_cast<float>(frame_totaltime) / getTickFrequency());

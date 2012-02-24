@@ -41,11 +41,11 @@
 //M*/
 
 // We follow to these papers:
-// 1) Construction of panoramic mosaics with global and local alignment. 
+// 1) Construction of panoramic mosaics with global and local alignment.
 //    Heung-Yeung Shum and Richard Szeliski. 2000.
-// 2) Eliminating Ghosting and Exposure Artifacts in Image Mosaics. 
+// 2) Eliminating Ghosting and Exposure Artifacts in Image Mosaics.
 //    Matthew Uyttendaele, Ashley Eden and Richard Szeliski. 2001.
-// 3) Automatic Panoramic Image Stitching using Invariant Features. 
+// 3) Automatic Panoramic Image Stitching using Invariant Features.
 //    Matthew Brown and David G. Lowe. 2007.
 
 #include "precomp.hpp"
@@ -61,9 +61,9 @@ using namespace cv;
 
 void printUsage()
 {
-    cout << 
+    cout <<
         "Rotation model images stitcher.\n\n"
-        "opencv_stitching img1 img2 [...imgN] [flags]\n\n" 
+        "opencv_stitching img1 img2 [...imgN] [flags]\n\n"
         "Flags:\n"
         "  --preview\n"
         "      Run stitching in the preview mode. Works faster than usual mode,\n"
@@ -86,11 +86,11 @@ void printUsage()
         "  --wave_correct (no|yes)\n"
         "      Perform wave effect correction. The default is 'yes'.\n"
         "\nCompositing Flags:\n"
-        "  --warp (plane|cylindrical|spherical)\n" 
+        "  --warp (plane|cylindrical|spherical)\n"
         "      Warp surface type. The default is 'spherical'.\n"
         "  --seam_megapix <float>\n"
         "      Resolution for seam estimation step. The default is 0.1 Mpx.\n"
-        "  --seam (no|voronoi|gc_color|gc_colorgrad)\n" 
+        "  --seam (no|voronoi|gc_color|gc_colorgrad)\n"
         "      Seam estimation method. The default is 'gc_color'.\n"
         "  --compose_megapix <float>\n"
         "      Resolution for compositing step. Use -1 for original resolution.\n"
@@ -164,20 +164,20 @@ int parseCmdArgs(int argc, char** argv)
             }
             i++;
         }
-        else if (string(argv[i]) == "--work_megapix") 
+        else if (string(argv[i]) == "--work_megapix")
         {
             work_megapix = atof(argv[i + 1]);
-            i++; 
+            i++;
         }
-        else if (string(argv[i]) == "--seam_megapix") 
+        else if (string(argv[i]) == "--seam_megapix")
         {
             seam_megapix = atof(argv[i + 1]);
-            i++; 
+            i++;
         }
-        else if (string(argv[i]) == "--compose_megapix") 
+        else if (string(argv[i]) == "--compose_megapix")
         {
             compose_megapix = atof(argv[i + 1]);
-            i++; 
+            i++;
         }
         else if (string(argv[i]) == "--result")
         {
@@ -249,7 +249,7 @@ int parseCmdArgs(int argc, char** argv)
                 return -1;
             }
             i++;
-        }        
+        }
         else if (string(argv[i]) == "--seam")
         {
             if (string(argv[i + 1]) == "no")
@@ -360,14 +360,14 @@ int main(int argc, char* argv[])
         {
             if (!is_work_scale_set)
             {
-                work_scale = min(1.0, sqrt(work_megapix * 1e6 / fullimg.size().area()));                    
+                work_scale = min(1.0, sqrt(work_megapix * 1e6 / fullimg.size().area()));
                 is_work_scale_set = true;
             }
             resize(fullimg, fimg, Size(), work_scale, work_scale);
         }
         if (!is_seam_scale_set)
         {
-            seam_scale = min(1.0, sqrt(seam_megapix * 1e6 / fullimg.size().area()));                    
+            seam_scale = min(1.0, sqrt(seam_megapix * 1e6 / fullimg.size().area()));
             seam_work_aspect = seam_scale / work_scale;
             is_seam_scale_set = true;
         }
@@ -479,14 +479,14 @@ int main(int argc, char* argv[])
         // Preapre images masks
         masks[i].create(images[i].size(), CV_8U);
         masks[i].setTo(Scalar::all(255));
-        
-        Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect), 
+
+        Ptr<Warper> warper = Warper::createByCameraFocal(static_cast<float>(warped_image_scale * seam_work_aspect),
                                                         warp_type, try_gpu);
         // Warp images and their masks
-        corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
+        corners[i] = warper->warp(images[i], static_cast<float>(cameras[i].focal * seam_work_aspect),
                                   cameras[i].R, images_warped[i]);
         sizes[i] = images_warped[i].size();
-        warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect), 
+        warper->warp(masks[i], static_cast<float>(cameras[i].focal * seam_work_aspect),
                      cameras[i].R, masks_warped[i], INTER_NEAREST, BORDER_CONSTANT);
         images_warped[i].convertTo(images_warped_f[i], CV_32F);
     }
@@ -539,7 +539,7 @@ int main(int argc, char* argv[])
     }
 
     if (blender.empty())
-    {            
+    {
         blender = Blender::createDefault(blend_type, try_gpu);
         Size dst_sz = resultRoi(corners, sizes).size();
         float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
@@ -559,7 +559,7 @@ int main(int argc, char* argv[])
         }
         blender->prepare(corners, sizes);
     }
-    
+
     #pragma omp parallel for
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
@@ -589,7 +589,7 @@ int main(int argc, char* argv[])
         else
             img = full_img;
         full_img.release();
-        Size img_size = img.size();                
+        Size img_size = img.size();
 
         // Warp the current image
         Ptr<Warper> warper = Warper::createByCameraFocal(warped_image_scale, warp_type, try_gpu);
@@ -599,7 +599,7 @@ int main(int argc, char* argv[])
         imwrite(img_idx+"img_warped.png",img_warped);
         // Warp the current image mask
         mask.create(img_size, CV_8U);
-        mask.setTo(Scalar::all(255));    
+        mask.setTo(Scalar::all(255));
         warper->warp(mask, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R, mask_warped,
                      INTER_NEAREST, BORDER_CONSTANT);
 
@@ -609,16 +609,16 @@ int main(int argc, char* argv[])
         img_warped.convertTo(img_warped_s, CV_16S);
         img_warped.release();
         img.release();
-        mask.release();       
+        mask.release();
 
         dilate(masks_warped[img_idx], dilated_mask, Mat());
         resize(dilated_mask, seam_mask, mask_warped.size());
         mask_warped = seam_mask & mask_warped;
 
         // Blend the current image
-        blender->feed(img_warped_s, mask_warped, corners[img_idx]);        
+        blender->feed(img_warped_s, mask_warped, corners[img_idx]);
     }
-   
+
     Mat result, result_mask;
     blender->blend(result, result_mask);
 
