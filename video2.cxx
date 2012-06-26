@@ -627,11 +627,13 @@ int main(int argc, char* argv[])
         Mat result_show;
         result.convertTo(result_show, CV_8U);
         imshow("video_stitching", result_show);
-        if (save_video){
+        imwrite("result.png", result_show);
+/*        if (save_video){
             if(!writer.isOpened()) writer.open(result_video, CV_FOURCC('P','I','M','1'), 24, result_show.size(), true);
             for (int k=0;k<frame_time/(getTickFrequency()/24.f);++k)
                 writer<<result_show;
         }
+ */
 
         char key=waitKey(5);
         if (key=='q' || key==27) {

@@ -116,7 +116,7 @@ double compose_megapix = -1;
 int ba_space = BundleAdjuster::FOCAL_RAY_SPACE;
 float conf_thresh = 1.f;
 bool wave_correct = true;
-int warp_type = Warper::SPHERICAL;
+int warp_type = Warper::PLANE;
 int expos_comp_type = ExposureCompensator::GAIN_BLOCKS;
 float match_conf = 0.65f;
 int seam_find_type = SeamFinder::GC_COLOR;
@@ -391,6 +391,14 @@ int main(int argc, char* argv[])
     matcher(features, pairwise_matches);
     matcher.releaseMemory();
     LOGLN("Pairwise matching, time: " << ((getTickCount() - t) / getTickFrequency()) << " sec");
+        {
+            Mat test_out;
+            LOGLN("match pairs:"<<pairwise_matches[1].matches.size());
+            LOGLN("matrix H:"<<pairwise_matches[1].H);
+            drawMatches(images[0], features[0].keypoints, images[1], features[1].keypoints, pairwise_matches[1].matches, test_out);
+            imwrite("matchpoints.png", test_out);
+            test_out.release();
+        }
 
     // Leave only images we are sure are from the same panorama
     vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
@@ -560,7 +568,7 @@ int main(int argc, char* argv[])
         blender->prepare(corners, sizes);
     }
 
-    #pragma omp parallel for
+//     #pragma omp parallel for
     for (int img_idx = 0; img_idx < num_images; ++img_idx)
     {
         Mat full_img, img;
@@ -596,7 +604,6 @@ int main(int argc, char* argv[])
         warper->warp(img, static_cast<float>(cameras[img_idx].focal), cameras[img_idx].R,
                      img_warped);
 
-        imwrite(img_idx+"img_warped.png",img_warped);
         // Warp the current image mask
         mask.create(img_size, CV_8U);
         mask.setTo(Scalar::all(255));
@@ -614,6 +621,8 @@ int main(int argc, char* argv[])
         dilate(masks_warped[img_idx], dilated_mask, Mat());
         resize(dilated_mask, seam_mask, mask_warped.size());
         mask_warped = seam_mask & mask_warped;
+
+        stringstream imgname; imgname<<"imgwarp_s"<<img_idx<<".png"; imwrite(imgname.str(), img_warped_s);imgname.str("");
 
         // Blend the current image
         blender->feed(img_warped_s, mask_warped, corners[img_idx]);

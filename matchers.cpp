@@ -51,8 +51,8 @@ using namespace cv::gpu;
 
 //////////////////////////////////////////////////////////////////////////////
 
-void FeaturesFinder::operator ()(const Mat &image, ImageFeatures &features) 
-{ 
+void FeaturesFinder::operator ()(const Mat &image, ImageFeatures &features)
+{
     find(image, features);
     features.img_size = image.size();
 }
@@ -64,8 +64,8 @@ namespace
     class CpuSurfFeaturesFinder : public FeaturesFinder
     {
     public:
-        CpuSurfFeaturesFinder(double hess_thresh, int num_octaves, int num_layers, 
-                              int num_octaves_descr, int num_layers_descr) 
+        CpuSurfFeaturesFinder(double hess_thresh, int num_octaves, int num_layers,
+                              int num_octaves_descr, int num_layers_descr)
         {
             detector_ = new SurfFeatureDetector(hess_thresh, num_octaves, num_layers);
             extractor_ = new SurfDescriptorExtractor(num_octaves_descr, num_layers_descr);
@@ -83,8 +83,8 @@ namespace
     class GpuSurfFeaturesFinder : public FeaturesFinder
     {
     public:
-        GpuSurfFeaturesFinder(double hess_thresh, int num_octaves, int num_layers, 
-                              int num_octaves_descr, int num_layers_descr) 
+        GpuSurfFeaturesFinder(double hess_thresh, int num_octaves, int num_layers,
+                              int num_octaves_descr, int num_layers_descr)
         {
             surf_.keypointsRatio = 0.1f;
             surf_.hessianThreshold = hess_thresh;
@@ -119,7 +119,7 @@ namespace
         detector_->detect(gray_image, features.keypoints);
         extractor_->compute(gray_image, features.keypoints, features.descriptors);
     }
-  
+
 
     void GpuSurfFeaturesFinder::find(const Mat &image, ImageFeatures &features)
     {
@@ -155,7 +155,7 @@ namespace
 } // anonymous namespace
 
 
-SurfFeaturesFinder::SurfFeaturesFinder(bool try_use_gpu, double hess_thresh, int num_octaves, int num_layers, 
+SurfFeaturesFinder::SurfFeaturesFinder(bool try_use_gpu, double hess_thresh, int num_octaves, int num_layers,
                                        int num_octaves_descr, int num_layers_descr)
 {
     if (try_use_gpu && getCudaEnabledDeviceCount() > 0)
@@ -253,15 +253,15 @@ struct DistIdxPair
 struct MatchPairsBody
 {
     MatchPairsBody(const MatchPairsBody& other)
-            : matcher(other.matcher), features(other.features), 
+            : matcher(other.matcher), features(other.features),
               pairwise_matches(other.pairwise_matches), near_pairs(other.near_pairs) {}
 
-    MatchPairsBody(FeaturesMatcher &matcher, const vector<ImageFeatures> &features, 
+    MatchPairsBody(FeaturesMatcher &matcher, const vector<ImageFeatures> &features,
                    vector<MatchesInfo> &pairwise_matches, vector<pair<int,int> > &near_pairs)
-            : matcher(matcher), features(features), 
+            : matcher(matcher), features(features),
               pairwise_matches(pairwise_matches), near_pairs(near_pairs) {}
 
-    void operator ()(const BlockedRange &r) const 
+    void operator ()(const BlockedRange &r) const
     {
         const int num_images = static_cast<int>(features.size());
         for (int i = r.begin(); i < r.end(); ++i)
@@ -322,11 +322,11 @@ void FeaturesMatcher::operator ()(const vector<ImageFeatures> &features, vector<
 
 //////////////////////////////////////////////////////////////////////////////
 
-namespace 
+namespace
 {
     typedef set<pair<int,int> > MatchesSet;
 
-    // These two classes are aimed to find features matches only, not to 
+    // These two classes are aimed to find features matches only, not to
     // estimate homography
 
     class CpuMatcher : public FeaturesMatcher
@@ -361,19 +361,19 @@ namespace
         CV_Assert(features2.descriptors.depth() == CV_8U || features2.descriptors.depth() == CV_32F);
         // this assert may happen when one cam is too dark, so comment it out.
         //CV_Assert(features1.descriptors.type() == features2.descriptors.type());
-        
+
         matches_info.matches.clear();
         if (features1.descriptors.type() != features2.descriptors.type()) return;
-        if (features1.descriptors.empty() != features2.descriptors.empty()) return;
+        if (features1.descriptors.empty() || features2.descriptors.empty()) return;
 
 //        /*
         Ptr<flann::IndexParams> indexParams = new flann::KDTreeIndexParams();
         Ptr<flann::SearchParams> searchParams = new flann::SearchParams();
         if (features2.descriptors.depth() == CV_8U)
-        {   
+        {
             indexParams->setAlgorithm(cvflann::FLANN_INDEX_LSH);
             searchParams->setAlgorithm(cvflann::FLANN_INDEX_LSH);
-        }   
+        }
 
         Ptr<FlannBasedMatcher> matcher = new FlannBasedMatcher(indexParams, searchParams);
  //       */
@@ -419,11 +419,11 @@ namespace
                     matches_info.matches.push_back(DMatch(m0.trainIdx, m0.queryIdx, m0.distance));
         }
     }
-       
+
     void GpuMatcher::match(const ImageFeatures &features1, const ImageFeatures &features2, MatchesInfo& matches_info)
     {
         /* FIXME: not capable with opencv-svn
-        matches_info.matches.clear(); 
+        matches_info.matches.clear();
 
         ensureSizeIsEnough(features1.descriptors.size(), features1.descriptors.type(), descriptors1_);
         ensureSizeIsEnough(features2.descriptors.size(), features2.descriptors.type(), descriptors2_);
@@ -431,14 +431,14 @@ namespace
         descriptors1_.upload(features1.descriptors);
         descriptors2_.upload(features2.descriptors);
 
-        // TODO: No devices, need test here. 
+        // TODO: No devices, need test here.
         Ptr<BruteForceMatcher_GPU_base> matcher;
         if (features2.descriptors.depth() == CV_8U){
             matcher = new BruteForceMatcher_GPU< Hamming >;
         }else{
             matcher = new BruteForceMatcher_GPU< L2<float> >;
         }
-        
+
         MatchesSet matches;
 
         // Find 1->2 matches
@@ -487,7 +487,7 @@ namespace
 
 BestOf2NearestMatcher::BestOf2NearestMatcher(bool try_use_gpu, float match_conf,
                                              int num_matches_thresh1, int num_matches_thresh2)
-                                             
+
 {
     bool use_gpu = false;
     if (try_use_gpu && getCudaEnabledDeviceCount() > 0)
@@ -497,11 +497,11 @@ BestOf2NearestMatcher::BestOf2NearestMatcher(bool try_use_gpu, float match_conf,
             use_gpu = true;
     }
 
- 
+
     if (use_gpu)
         impl_ = new GpuMatcher(match_conf);
     else
- 
+
     impl_ = new CpuMatcher(match_conf);
 
     is_thread_safe_ = impl_->isThreadSafe();
@@ -555,17 +555,17 @@ void BestOf2NearestMatcher::match(const ImageFeatures &features1, const ImageFea
     for (size_t i = 0; i < matches_info.inliers_mask.size(); ++i)
         if (matches_info.inliers_mask[i])
             matches_info.num_inliers++;
-	
-    // These coeffs are from paper M. Brown and D. Lowe. "Automatic Panoramic Image Stitching 
+
+    // These coeffs are from paper M. Brown and D. Lowe. "Automatic Panoramic Image Stitching
     // using Invariant Features"
     matches_info.confidence = matches_info.num_inliers / (8 + 0.3*matches_info.matches.size());
     LOGLN("\nmatches confidence:"<<matches_info.confidence);
     LOGLN("match pairs:"<<matches_info.matches.size());
-    
-    // Set zero confidence to remove matches between too close images, as they don't provide 
+
+    // Set zero confidence to remove matches between too close images, as they don't provide
     // additional information anyway. The threshold was set experimentally.
     matches_info.confidence = matches_info.confidence > 3. ? 0. : matches_info.confidence;
-    
+
     // Check if we should try to refine motion
     if (matches_info.num_inliers < num_matches_thresh2_)
         return;
